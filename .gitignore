@@ -1,0 +1,32 @@
+# superpowers
+.superpowers/
+docs/superpowers/
+
+# python
+.venv/
+.ruff_cache/
+.pytest_cache/
+.ty/
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+
+# local runtime state
+var/*
+!var/.gitkeep
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.bun-tmp/
+frontend/playwright-report/
+frontend/test-results/
+frontend/*.tsbuildinfo

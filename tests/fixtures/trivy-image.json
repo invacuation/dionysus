@@ -1,0 +1,115 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "registry.example.test/dionysus/api:2026.05.07",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "ImageID": "sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+    "RepoTags": [
+      "registry.example.test/dionysus/api:2026.05.07"
+    ],
+    "RepoDigests": [
+      "registry.example.test/dionysus/api@sha256:aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000"
+    ],
+    "OS": {
+      "Family": "debian",
+      "Name": "12.5"
+    }
+  },
+  "CreatedAt": "2026-05-07T12:34:56Z",
+  "Results": [
+    {
+      "Target": "registry.example.test/dionysus/api:2026.05.07 (debian 12.5)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2026-1001",
+          "PkgID": "openssl@3.0.11-1",
+          "PkgName": "openssl",
+          "PkgPath": "/usr/lib/ssl",
+          "InstalledVersion": "3.0.11-1",
+          "FixedVersion": "3.0.13-1",
+          "Severity": "HIGH",
+          "Title": "openssl bounds check issue",
+          "Description": "A representative OpenSSL vulnerability.",
+          "CweIDs": [
+            "CWE-787"
+          ],
+          "VendorIDs": [
+            "DSA-2026-001"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V2Score": 5.0,
+              "V2Vector": "AV:N/AC:L/Au:N/C:P/I:N/A:N",
+              "V3Score": 8.1,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+            },
+            "redhat": {
+              "V3Score": 7.5,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+            }
+          },
+          "References": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-1001",
+            "https://security-tracker.debian.org/tracker/CVE-2026-1001"
+          ]
+        },
+        {
+          "VulnerabilityID": "CVE-2026-1001",
+          "PkgID": "openssl@3.0.11-1",
+          "PkgName": "openssl",
+          "PkgPath": "/usr/lib/ssl",
+          "InstalledVersion": "3.0.11-1",
+          "FixedVersion": "3.0.13-1",
+          "Severity": "CRITICAL",
+          "Title": "duplicate openssl record with stronger severity",
+          "CweIDs": [
+            "CWE-787",
+            "CWE-120"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Score": 9.1,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            }
+          },
+          "References": [
+            "https://example.test/advisories/CVE-2026-1001"
+          ]
+        }
+      ]
+    },
+    {
+      "Target": "app/requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "GHSA-abcd-1234-wxyz",
+          "PkgID": "requests@2.31.0",
+          "PkgName": "requests",
+          "InstalledVersion": "2.31.0",
+          "FixedVersion": "2.32.0",
+          "Severity": "medium",
+          "Title": "requests redirect issue",
+          "CveIDs": [
+            "CVE-2026-2002"
+          ],
+          "CweIDs": [
+            "CWE-601"
+          ],
+          "CVSS": {
+            "ghsa": {
+              "V3Score": 6.5,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N"
+            }
+          },
+          "References": [
+            "https://github.com/advisories/GHSA-abcd-1234-wxyz"
+          ]
+        }
+      ]
+    }
+  ]
+}

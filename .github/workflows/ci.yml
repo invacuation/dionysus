@@ -1,0 +1,212 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-quality:
+    name: backend quality
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: install uv
+        # astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+
+      - name: set up python
+        run: uv python install 3.13
+
+      - name: install backend dependencies
+        run: uv sync --dev
+
+      - name: run ruff
+        run: uv run ruff check .
+
+      - name: check formatting
+        run: uv run ruff format --check .
+
+      - name: run ty
+        run: uv run ty check src tests migrations
+
+      - name: run backend tests
+        run: uv run pytest
+
+  migrations:
+    name: database migrations
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: install uv
+        # astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+
+      - name: set up python
+        run: uv python install 3.13
+
+      - name: install backend dependencies
+        run: uv sync --dev
+
+      - name: upgrade to head
+        run: uv run alembic upgrade head
+
+      - name: downgrade to base
+        run: uv run alembic downgrade base
+
+      - name: upgrade again
+        run: uv run alembic upgrade head
+
+  frontend-quality:
+    name: frontend quality
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: set up node
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22.12.0"
+
+      - name: set up bun
+        # oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: run frontend tests
+        working-directory: frontend
+        run: bun test
+
+      - name: run typecheck
+        working-directory: frontend
+        run: bun run typecheck
+
+      - name: build frontend
+        working-directory: frontend
+        run: bun run build
+
+  frontend-e2e:
+    name: frontend e2e
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: set up node
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22.12.0"
+
+      - name: set up bun
+        # oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: install playwright
+        working-directory: frontend
+        run: bunx playwright install --with-deps chromium
+
+      - name: run e2e tests
+        working-directory: frontend
+        run: bun run e2e
+
+      - name: upload playwright artifacts
+        if: failure()
+        # actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+
+  version-bump:
+    name: version bump
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - name: auto-bump version from PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if echo "$PR_TITLE" | grep -qE '^(docs|chore)(\([^)]*\))?:'; then
+            echo "PR title is docs/chore, version bump not required"
+            exit 0
+          fi
+
+          REQUIRED="patch"
+          if echo "$PR_TITLE" | grep -qE '^[a-z]+(\([^)]*\))?!:'; then
+            REQUIRED="major"
+          elif echo "$PR_TITLE" | grep -qE '^feat(\([^)]*\))?:'; then
+            REQUIRED="minor"
+          fi
+
+          PR_VERSION=$(tr -d '[:space:]' < .VERSION)
+          if MAIN_VERSION_RAW=$(git show origin/main:.VERSION 2>/dev/null); then
+            MAIN_VERSION=$(printf "%s" "$MAIN_VERSION_RAW" | tr -d '[:space:]')
+          else
+            MAIN_VERSION="0.0.0"
+          fi
+
+          SEMVER_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if ! [[ "$PR_VERSION" =~ $SEMVER_PATTERN ]]; then
+            echo "Invalid PR version in .VERSION: $PR_VERSION"
+            exit 1
+          fi
+          if ! [[ "$MAIN_VERSION" =~ $SEMVER_PATTERN ]]; then
+            echo "Invalid main version: $MAIN_VERSION"
+            exit 1
+          fi
+
+          echo "Main version: $MAIN_VERSION"
+          echo "PR version:   $PR_VERSION"
+          echo "Required bump: $REQUIRED"
+
+          MAIN_MAJOR=$(echo "$MAIN_VERSION" | cut -d. -f1)
+          MAIN_MINOR=$(echo "$MAIN_VERSION" | cut -d. -f2)
+          MAIN_PATCH=$(echo "$MAIN_VERSION" | cut -d. -f3)
+
+          if [ "$REQUIRED" = "major" ]; then
+            EXPECTED="$((MAIN_MAJOR + 1)).0.0"
+          elif [ "$REQUIRED" = "minor" ]; then
+            EXPECTED="${MAIN_MAJOR}.$((MAIN_MINOR + 1)).0"
+          else
+            EXPECTED="${MAIN_MAJOR}.${MAIN_MINOR}.$((MAIN_PATCH + 1))"
+          fi
+
+          if [ "$PR_VERSION" = "$EXPECTED" ]; then
+            echo "Version already correct ($PR_VERSION), skipping"
+            exit 0
+          fi
+
+          printf "%s\n" "$EXPECTED" > .VERSION
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .VERSION
+          git commit -m "chore: bump version to $EXPECTED"
+          git push
+
+          echo "Version bumped: $MAIN_VERSION -> $EXPECTED ($REQUIRED)"
