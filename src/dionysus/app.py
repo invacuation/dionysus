@@ -1,9 +1,11 @@
 """FastAPI application factory for Dionysus."""
 
 from fastapi import FastAPI
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
 from dionysus.api import router as api_router
-from dionysus.config import AppSettings
+from dionysus.config import AppSettings, Environment
 from dionysus.db import create_engine_from_url, create_session_factory
 from dionysus.frontend import (
     default_frontend_dist,
@@ -15,8 +17,15 @@ from dionysus.frontend import (
 from dionysus.frontend import (
     router as frontend_router,
 )
+from dionysus.identity.bootstrap import BootstrapAdminError, bootstrap_admin_from_settings
 from dionysus.middleware.request_size import RequestBodyLimitMiddleware
+from dionysus.models import Base
 from dionysus.routes.health import router as health_router
+
+SCHEMA_NOT_READY_MESSAGE = (
+    "startup bootstrap failed: database schema is not up to date; "
+    "run migrations and retry"
+)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -35,6 +44,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.engine = create_engine_from_url(resolved_settings.database_url)
     app.state.session_factory = create_session_factory(app.state.engine)
+    _prepare_test_database(resolved_settings, app.state.engine)
+    _bootstrap_admin(app.state.session_factory, resolved_settings)
     app.state.frontend_dist = default_frontend_dist()
     mount_frontend_assets(app, app.state.frontend_dist)
     app.add_middleware(
@@ -46,3 +57,28 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(frontend_router)
     app.include_router(frontend_fallback_router)
     return app
+
+
+def _prepare_test_database(settings: AppSettings, engine) -> None:
+    """Create an in-memory test schema for app-factory bootstrap tests."""
+
+    if settings.environment == Environment.TEST and settings.database_url == "sqlite:///:memory:":
+        Base.metadata.create_all(engine)
+
+
+def _bootstrap_admin(
+    session_factory: sessionmaker,
+    settings: AppSettings,
+) -> None:
+    """Run initial administrator bootstrap inside an app startup transaction."""
+
+    with session_factory() as session:
+        try:
+            bootstrap_admin_from_settings(session, settings)
+            session.commit()
+        except OperationalError as exc:
+            session.rollback()
+            raise BootstrapAdminError(SCHEMA_NOT_READY_MESSAGE) from exc
+        except Exception:
+            session.rollback()
+            raise

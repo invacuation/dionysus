@@ -62,7 +62,12 @@ def _bun_bin() -> Path:
 
 
 def _test_settings() -> AppSettings:
-    return AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
+    return AppSettings(
+        environment=Environment.TEST,
+        database_url="sqlite:///:memory:",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+    )
 
 
 def test_react_frontend_serves_index_at_root_when_build_exists(tmp_path: Path) -> None:

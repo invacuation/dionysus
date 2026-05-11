@@ -1,35 +1,68 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
 from dionysus.app import create_app
+from dionysus.config import AppSettings, Environment
+from dionysus.identity.bootstrap import BootstrapAdminError
+from dionysus.identity.users import authenticate_user
 from dionysus.imports.persistence import import_trivy_report
 from dionysus.models import Base
 from dionysus.models.inventory import AssetNode, AssetNodeType, Project
 from dionysus.overview import get_estate_overview
 
 FIXTURE = Path(__file__).parent / "fixtures" / "trivy-image.json"
+BOOTSTRAP_PASSWORD = "change-me-now-please"  # noqa: S105 - test fixture password
+
+
+def _bootstrap_test_settings() -> AppSettings:
+    return AppSettings(
+        environment=Environment.TEST,
+        database_url="sqlite:///:memory:",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password=BOOTSTRAP_PASSWORD,
+    )
 
 
 def _client_with_frontend_dist(tmp_path: Path) -> TestClient:
     frontend_dist = tmp_path / "dist"
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
-    app = create_app()
+    app = create_app(_bootstrap_test_settings())
     app.state.frontend_dist = frontend_dist
     return TestClient(app)
 
 
 def test_health_endpoint_returns_ok() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(_bootstrap_test_settings()))
 
     response = client.get("/healthz")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_create_app_bootstraps_admin_from_settings() -> None:
+    app = create_app(_bootstrap_test_settings())
+
+    with app.state.session_factory() as session:
+        user = authenticate_user(session, "admin", BOOTSTRAP_PASSWORD)
+
+    assert user is not None
+    assert user.username == "admin"
+
+
+def test_create_app_requires_bootstrap_username_and_password() -> None:
+    settings = AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
+
+    with pytest.raises(BootstrapAdminError) as exc_info:
+        create_app(settings)
+
+    assert "username and password are required" in str(exc_info.value)
 
 
 def test_estate_overview_excludes_sla_reporting_opt_out_from_sla_counts(

@@ -34,7 +34,13 @@ def _client_with_session_factory(
     raise_server_exceptions: bool = True,
 ) -> TestClient:
     app = create_app(
-        settings or AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
+        settings
+        or AppSettings(
+            environment=Environment.TEST,
+            database_url="sqlite:///:memory:",
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+        )
     )
     app.state.session_factory = session_factory
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
@@ -429,6 +435,8 @@ def test_api_trivy_preview_oversized_upload_returns_413_without_persistence(
             settings=AppSettings(
                 environment=Environment.TEST,
                 database_url="sqlite:///:memory:",
+                bootstrap_admin_username="admin",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
                 max_report_upload_bytes=8,
             ),
             raise_server_exceptions=False,
@@ -712,6 +720,8 @@ def test_api_trivy_import_oversized_upload_returns_413_without_attempt(
             settings=AppSettings(
                 environment=Environment.TEST,
                 database_url="sqlite:///:memory:",
+                bootstrap_admin_username="admin",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
                 max_report_upload_bytes=8,
             ),
             raise_server_exceptions=False,

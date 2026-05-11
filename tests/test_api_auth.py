@@ -24,7 +24,14 @@ def _client_with_session_factory(
     *,
     environment: Environment = Environment.TEST,
 ) -> TestClient:
-    app = create_app(AppSettings(environment=environment, database_url="sqlite:///:memory:"))
+    app = create_app(
+        AppSettings(
+            environment=environment,
+            database_url="sqlite:///:memory:",
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+        )
+    )
     app.state.session_factory = session_factory
     return TestClient(app)
 

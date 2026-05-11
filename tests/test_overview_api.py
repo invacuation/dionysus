@@ -22,7 +22,14 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_app(
+        AppSettings(
+            environment=Environment.TEST,
+            database_url="sqlite:///:memory:",
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+        )
+    )
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -66,7 +73,14 @@ def _grant_permission(
 
 
 def test_overview_openapi_uses_stable_response_schema() -> None:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_app(
+        AppSettings(
+            environment=Environment.TEST,
+            database_url="sqlite:///:memory:",
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+        )
+    )
     client = TestClient(app)
 
     response = client.get("/openapi.json")
@@ -135,7 +149,12 @@ def test_overview_api_returns_estate_summary(engine: Engine) -> None:
             session.commit()
 
         app = create_app(
-            AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
+            AppSettings(
+                environment=Environment.TEST,
+                database_url="sqlite:///:memory:",
+                bootstrap_admin_username="admin",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
+            )
         )
         app.state.session_factory = session_factory
         client = TestClient(app)

@@ -31,6 +31,8 @@ def _client_with_session_factory(session_factory: sessionmaker[Session]) -> Test
         AppSettings(
             environment=Environment.TEST,
             database_url="sqlite:///:memory:",
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
         )
     )
     app.state.session_factory = session_factory
