@@ -1,6 +1,6 @@
 [project]
 name = "dionysus"
-version = "0.3.2"
+version = "0.4.0"
 description = "Security scan triage web application"
 readme = "README.md"
 requires-python = ">=3.13"
