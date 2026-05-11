@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -19,14 +20,14 @@ def make_prepared_app_settings(
     tmp_path: Path,
     *,
     database_name: str = "app.db",
-    **overrides: object,
+    **overrides: Any,
 ) -> AppSettings:
     database_url = f"sqlite:///{tmp_path / database_name}"
     engine = create_engine_from_url(database_url)
     Base.metadata.create_all(engine)
     engine.dispose()
 
-    settings = {
+    settings: dict[str, Any] = {
         "environment": Environment.TEST,
         "database_url": database_url,
         "bootstrap_admin_username": "admin",
@@ -36,7 +37,7 @@ def make_prepared_app_settings(
     return AppSettings(**settings)
 
 
-def create_prepared_test_app(**overrides: object) -> FastAPI:
+def create_prepared_test_app(**overrides: Any) -> FastAPI:
     tmp_dir = TemporaryDirectory()
     app = create_app(make_prepared_app_settings(Path(tmp_dir.name), **overrides))
     app.state.bootstrap_database_tmp_dir = tmp_dir
