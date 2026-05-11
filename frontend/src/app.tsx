@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { AppShell, type AppRoute } from "@/components/app-shell"
@@ -10,12 +10,24 @@ import { ImportsPage } from "@/features/imports/imports-page"
 import { InventoryPage } from "@/features/inventory/inventory-page"
 import { OverviewPage } from "@/features/overview/overview-page"
 import { ApiError, getCurrentActor, login, logout } from "@/lib/api"
+import {
+  applyThemeMode,
+  loadThemeMode,
+  observeSystemTheme,
+  resolveThemeMode,
+  safeThemeModeStorage,
+  storeThemeMode,
+  type ThemeMode,
+} from "@/lib/theme"
 
 const currentActorQueryKey = ["auth", "me"] as const
 
 export function App() {
   const queryClient = useQueryClient()
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => routeFromLocation())
+  const [themeStorage] = useState(() => safeThemeModeStorage(() => window.localStorage))
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode(themeStorage))
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => getSystemPrefersDark())
   const currentActorQuery = useQuery({
     queryKey: currentActorQueryKey,
     queryFn: getCurrentActor,
@@ -48,10 +60,24 @@ export function App() {
     return () => window.removeEventListener("popstate", handleNavigation)
   }, [])
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+    return observeSystemTheme(mediaQuery, setSystemPrefersDark)
+  }, [])
+
+  useLayoutEffect(() => {
+    applyThemeMode(document.documentElement, resolveThemeMode(themeMode, systemPrefersDark))
+  }, [systemPrefersDark, themeMode])
+
   function navigate(route: AppRoute) {
     const path = routePath(route)
     window.history.pushState({}, "", path)
     setActiveRoute(route)
+  }
+
+  function changeThemeMode(mode: ThemeMode) {
+    setThemeMode(mode)
+    storeThemeMode(themeStorage, mode)
   }
 
   if (currentActorQuery.isPending) {
@@ -86,6 +112,8 @@ export function App() {
       <LoginPage
         error={loginMutation.error ? loginMutation.error.message : null}
         isSubmitting={loginMutation.isPending}
+        themeMode={themeMode}
+        onThemeModeChange={changeThemeMode}
         onSubmit={(credentials) => loginMutation.mutate(credentials)}
       />
     )
@@ -96,8 +124,10 @@ export function App() {
       activeRoute={activeRoute}
       actor={currentActorQuery.data}
       isLoggingOut={logoutMutation.isPending}
+      themeMode={themeMode}
       onNavigate={navigate}
       onLogout={() => logoutMutation.mutate()}
+      onThemeModeChange={changeThemeMode}
     >
       {activeRoute === "findings" ? (
         <FindingsPage currentActor={currentActorQuery.data} />
@@ -144,4 +174,8 @@ function routePath(route: AppRoute): string {
     return "/admin"
   }
   return "/"
+}
+
+function getSystemPrefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
 }
