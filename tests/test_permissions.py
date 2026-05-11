@@ -23,7 +23,7 @@ def test_direct_grant_allows_permission(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     assign_permission(
         db_session,
@@ -54,7 +54,7 @@ def test_explicit_deny_overrides_group_grant(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     group = Group(name="developers", display_name="Developers")
     db_session.add(group)
@@ -105,7 +105,7 @@ def test_no_grant_denies_permission(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     db_session.commit()
 
@@ -127,7 +127,7 @@ def test_half_scoped_assignment_raises_value_error(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
 
     with pytest.raises(
@@ -150,7 +150,7 @@ def test_half_scoped_check_raises_value_error(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
 
     with pytest.raises(
@@ -172,7 +172,7 @@ def test_duplicate_exact_assignment_returns_existing_row(db_session: Session) ->
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
 
     first = assign_permission(

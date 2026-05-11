@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from dionysus.app import create_app
+from conftest import create_prepared_test_app
 from dionysus.config import AppSettings, Environment
 from dionysus.identity.bootstrap import ADMIN_PERMISSION
 from dionysus.identity.machines import create_machine_credential, exchange_machine_client_secret
@@ -33,9 +33,9 @@ def _client_with_session_factory(
     settings: AppSettings | None = None,
     raise_server_exceptions: bool = True,
 ) -> TestClient:
-    app = create_app(
-        settings or AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
-    )
+    overrides = settings.model_dump() if settings is not None else {}
+    overrides.pop("database_url", None)
+    app = create_prepared_test_app(**overrides)
     app.state.session_factory = session_factory
     return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
@@ -66,7 +66,7 @@ def _create_user(session_factory: sessionmaker[Session]) -> str:
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         session.commit()
         return user.id
@@ -133,7 +133,7 @@ def _grant_permission(
 def _login(client: TestClient) -> None:
     response = client.post(
         "/api/auth/session",
-        json={"username": "alice", "password": "password"},
+        json={"username": "alice", "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
 
@@ -429,6 +429,8 @@ def test_api_trivy_preview_oversized_upload_returns_413_without_persistence(
             settings=AppSettings(
                 environment=Environment.TEST,
                 database_url="sqlite:///:memory:",
+                bootstrap_admin_username="admin",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
                 max_report_upload_bytes=8,
             ),
             raise_server_exceptions=False,
@@ -712,6 +714,8 @@ def test_api_trivy_import_oversized_upload_returns_413_without_attempt(
             settings=AppSettings(
                 environment=Environment.TEST,
                 database_url="sqlite:///:memory:",
+                bootstrap_admin_username="admin",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
                 max_report_upload_bytes=8,
             ),
             raise_server_exceptions=False,

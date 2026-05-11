@@ -1,6 +1,6 @@
 [project]
 name = "dionysus"
-version = "0.1.0"
+version = "0.4.0"
 description = "Security scan triage web application"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,9 +14,6 @@ dependencies = [
     "sqlalchemy>=2.0.35",
     "uvicorn[standard]>=0.30.6",
 ]
-
-[project.scripts]
-dionysus-admin = "dionysus.cli:main"
 
 [dependency-groups]
 dev = [

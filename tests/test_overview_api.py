@@ -5,8 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from dionysus.app import create_app
-from dionysus.config import AppSettings, Environment
+from conftest import create_prepared_test_app
 from dionysus.identity.permissions import assign_permission
 from dionysus.identity.users import create_user
 from dionysus.imports.persistence import import_trivy_report
@@ -22,7 +21,7 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_prepared_test_app()
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -33,14 +32,14 @@ def _login_user(client: TestClient, session_factory: sessionmaker[Session]) -> s
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         session.commit()
         user_id = user.id
 
     response = client.post(
         "/api/auth/session",
-        json={"username": "alice", "password": "password"},
+        json={"username": "alice", "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
     return user_id
@@ -66,7 +65,7 @@ def _grant_permission(
 
 
 def test_overview_openapi_uses_stable_response_schema() -> None:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_prepared_test_app()
     client = TestClient(app)
 
     response = client.get("/openapi.json")
@@ -134,9 +133,7 @@ def test_overview_api_returns_estate_summary(engine: Engine) -> None:
             )
             session.commit()
 
-        app = create_app(
-            AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
-        )
+        app = create_prepared_test_app()
         app.state.session_factory = session_factory
         client = TestClient(app)
         user_id = _login_user(client, session_factory)

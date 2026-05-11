@@ -1,17 +1,18 @@
-from pathlib import Path
-
 import pytest
-from sqlalchemy import Boolean, Column, DateTime, MetaData, String, Table, select
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from dionysus.cli import main
-from dionysus.db import create_engine_from_url, create_session_factory
-from dionysus.identity.bootstrap import BootstrapAdminError, bootstrap_admin_user
+from dionysus.config import AppSettings
+from dionysus.identity import bootstrap as bootstrap_service
+from dionysus.identity.bootstrap import (
+    BootstrapAdminError,
+    bootstrap_admin_from_settings,
+    bootstrap_admin_user,
+)
 from dionysus.identity.permissions import check_permission
 from dionysus.identity.users import authenticate_user, create_user
-from dionysus.models import Base
 from dionysus.models.identity import (
-    BootstrapLock,
     Group,
     GroupMembership,
     PermissionAssignment,
@@ -21,45 +22,12 @@ from dionysus.models.identity import (
 )
 
 
-def test_cli_bootstrap_admin_help_does_not_offer_raw_password(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(["bootstrap-admin", "--help"])
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 0
-    assert "--password PASSWORD" not in captured.out
-
-
-def test_cli_bootstrap_admin_rejects_raw_password_argument(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "bootstrap-admin",
-                "--username",
-                "root",
-                "--display-name",
-                "Root Admin",
-                "--password",
-                "correct horse battery staple",
-            ]
-        )
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 2
-    assert "correct horse battery staple" not in captured.err
-    assert "correct horse battery staple" not in captured.out
-
-
 def test_bootstrap_admin_creates_admin_identity(db_session: Session) -> None:
     user = bootstrap_admin_user(
         db_session,
-        username="root",
+        username="admin@example.com",
         display_name="Root Admin",
-        password="correct horse battery staple",  # noqa: S106
+        password="change-me-now-please",  # noqa: S106
     )
     db_session.commit()
 
@@ -73,7 +41,7 @@ def test_bootstrap_admin_creates_admin_identity(db_session: Session) -> None:
         scope_id=None,
     )
 
-    assert user.username == "root"
+    assert user.username == "admin@example.com"
     assert admin_group is not None
     assert admin_group.id is not None
     assert admin_group.display_name == "Administrators"
@@ -98,185 +66,241 @@ def test_bootstrap_admin_creates_admin_identity(db_session: Session) -> None:
     assert membership is not None
     assert assignment is not None
     assert permission.allowed
-    assert authenticate_user(db_session, "root", "correct horse battery staple") is not None
+    assert authenticate_user(db_session, "admin@example.com", "change-me-now-please") is not None
+
+
+def test_bootstrap_admin_from_settings_defaults_display_name_to_username(
+    db_session: Session,
+) -> None:
+    user = bootstrap_admin_from_settings(
+        db_session,
+        AppSettings(
+            bootstrap_admin_username="admin@example.com",
+            bootstrap_admin_password="change-me-now-please",  # noqa: S106
+        ),
+    )
+    db_session.commit()
+
+    assert user is not None
+    assert user.username == "admin@example.com"
+    assert user.display_name == "admin@example.com"
+    assert authenticate_user(db_session, "admin@example.com", "change-me-now-please") is not None
+
+
+@pytest.mark.parametrize(
+    ("username", "password"),
+    [
+        (None, None),
+        ("admin@example.com", None),
+        (None, "change-me-now-please"),
+        ("", "change-me-now-please"),
+        ("admin@example.com", ""),
+    ],
+)
+def test_bootstrap_admin_from_settings_requires_username_and_password(
+    db_session: Session,
+    username: str | None,
+    password: str | None,
+) -> None:
+    with pytest.raises(BootstrapAdminError) as exc_info:
+        bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username=username,
+                bootstrap_admin_password=password,
+            ),
+        )
+
+    message = str(exc_info.value)
+    assert "username and password are required" in message
+    assert "change-me-now-please" not in message
+
+
+def test_bootstrap_admin_from_settings_rejects_invalid_password(
+    db_session: Session,
+) -> None:
+    with pytest.raises(BootstrapAdminError) as exc_info:
+        bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="short",  # noqa: S106
+            ),
+        )
+
+    message = str(exc_info.value)
+    assert "password" in message
+    assert "short" not in message
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
+def test_bootstrap_admin_from_settings_warns_and_skips_when_users_exist(
+    db_session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106
+            ),
+        )
+
+    assert user is None
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
+def test_bootstrap_admin_from_settings_warns_and_skips_when_racing_user_creation(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    original_users_exist = bootstrap_service._users_exist
+    users_exist_calls = 0
+
+    def users_exist_after_initial_race_check(session: Session) -> bool:
+        nonlocal users_exist_calls
+        users_exist_calls += 1
+        if users_exist_calls == 1:
+            return False
+        return original_users_exist(session)
+
+    def raise_integrity_error(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("insert user", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(
+        bootstrap_service,
+        "_users_exist",
+        users_exist_after_initial_race_check,
+    )
+    monkeypatch.setattr(
+        bootstrap_service,
+        "bootstrap_admin_user",
+        raise_integrity_error,
+    )
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106
+            ),
+        )
+
+    assert user is None
+    assert users_exist_calls == 2
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
+    assert db_session.scalar(select(User).where(User.username == "alice@example.com")) is not None
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
+def test_bootstrap_admin_from_settings_warns_when_user_appears_before_inner_check(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    original_users_exist = bootstrap_service._users_exist
+    users_exist_calls = 0
+
+    def users_exist_after_initial_race_check(session: Session) -> bool:
+        nonlocal users_exist_calls
+        users_exist_calls += 1
+        if users_exist_calls == 1:
+            return False
+        return original_users_exist(session)
+
+    def raise_users_exist_error(*args: object, **kwargs: object) -> None:
+        msg = "users already exist; bootstrap admin is only allowed before user creation"
+        raise BootstrapAdminError(msg)
+
+    monkeypatch.setattr(
+        bootstrap_service,
+        "_users_exist",
+        users_exist_after_initial_race_check,
+    )
+    monkeypatch.setattr(
+        bootstrap_service,
+        "bootstrap_admin_user",
+        raise_users_exist_error,
+    )
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106
+            ),
+        )
+
+    assert user is None
+    assert users_exist_calls == 2
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
+    assert db_session.scalar(select(User).where(User.username == "alice@example.com")) is not None
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
+def test_bootstrap_admin_from_settings_skips_silently_when_users_exist_without_settings(
+    db_session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(db_session, AppSettings())
+
+    assert user is None
+    assert (
+        "bootstrap admin environment variables are set but users already exist" not in caplog.text
+    )
 
 
 def test_bootstrap_admin_refuses_when_user_already_exists(db_session: Session) -> None:
     create_user(
         db_session,
-        username="alice",
+        username="alice@example.com",
         display_name="Alice Example",
-        password="password",  # noqa: S106
+        password="change-me-now-please",  # noqa: S106
     )
     db_session.commit()
 
     with pytest.raises(BootstrapAdminError, match="users already exist"):
         bootstrap_admin_user(
             db_session,
-            username="root",
+            username="admin@example.com",
             display_name="Root Admin",
-            password="correct horse battery staple",  # noqa: S106
+            password="change-me-now-please",  # noqa: S106
         )
-
-
-def test_bootstrap_admin_refuses_when_first_run_lock_exists(db_session: Session) -> None:
-    db_session.add(BootstrapLock(name="initial-admin"))
-    db_session.commit()
-
-    with pytest.raises(BootstrapAdminError, match="bootstrap has already been claimed"):
-        bootstrap_admin_user(
-            db_session,
-            username="root",
-            display_name="Root Admin",
-            password="correct horse battery staple",  # noqa: S106
-        )
-
-    assert db_session.scalar(select(User).where(User.username == "root")) is None
-
-
-def test_bootstrap_admin_allows_later_admin_when_explicit(db_session: Session) -> None:
-    create_user(
-        db_session,
-        username="alice",
-        display_name="Alice Example",
-        password="password",  # noqa: S106
-    )
-    db_session.commit()
-
-    user = bootstrap_admin_user(
-        db_session,
-        username="root",
-        display_name="Root Admin",
-        password="correct horse battery staple",  # noqa: S106
-        allow_existing=True,
-    )
-    db_session.commit()
-
-    admin_group = db_session.scalar(select(Group).where(Group.name == "administrators"))
-
-    assert admin_group is not None
-    assert admin_group.id is not None
-    membership = db_session.scalar(
-        select(GroupMembership).where(
-            GroupMembership.group_id == admin_group.id,
-            GroupMembership.principal_type == PrincipalType.USER,
-            GroupMembership.principal_id == user.id,
-        )
-    )
-    assert membership is not None
-    assert authenticate_user(db_session, "root", "correct horse battery staple") is not None
-
-
-def test_cli_bootstrap_admin_creates_user_from_env_password(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    database_path = tmp_path / "dionysus.db"
-    database_url = f"sqlite:///{database_path}"
-    engine = create_engine_from_url(database_url)
-    Base.metadata.create_all(engine)
-    monkeypatch.setenv("DIONYSUS_DATABASE_URL", database_url)
-    monkeypatch.setenv("DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD", "correct horse battery staple")
-
-    exit_code = main(
-        [
-            "bootstrap-admin",
-            "--username",
-            "root",
-            "--display-name",
-            "Root Admin",
-        ]
-    )
-
-    session_factory = create_session_factory(engine)
-    with session_factory() as session:
-        user = session.scalar(select(User).where(User.username == "root"))
-        admin_group = session.scalar(select(Group).where(Group.name == "administrators"))
-
-        assert exit_code == 0
-        assert user is not None
-        assert admin_group is not None
-        assert authenticate_user(session, "root", "correct horse battery staple") is not None
-
-
-def test_cli_bootstrap_admin_exits_nonzero_when_users_exist(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    database_path = tmp_path / "dionysus.db"
-    database_url = f"sqlite:///{database_path}"
-    engine = create_engine_from_url(database_url)
-    Base.metadata.create_all(engine)
-    session_factory = create_session_factory(engine)
-    with session_factory() as session:
-        create_user(
-            session,
-            username="alice",
-            display_name="Alice Example",
-            password="password",  # noqa: S106
-        )
-        session.commit()
-    monkeypatch.setenv("DIONYSUS_DATABASE_URL", database_url)
-    monkeypatch.setenv("DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD", "correct horse battery staple")
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "bootstrap-admin",
-                "--username",
-                "root",
-                "--display-name",
-                "Root Admin",
-            ]
-        )
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "users already exist" in captured.err
-    assert "correct horse battery staple" not in captured.err
-
-
-def test_cli_bootstrap_admin_exits_with_migration_hint_when_bootstrap_locks_missing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    database_path = tmp_path / "dionysus.db"
-    database_url = f"sqlite:///{database_path}"
-    engine = create_engine_from_url(database_url)
-    old_schema_metadata = MetaData()
-    Table(
-        "users",
-        old_schema_metadata,
-        Column("id", String(), primary_key=True),
-        Column("username", String(150), nullable=False, unique=True, index=True),
-        Column("display_name", String(200), nullable=False),
-        Column("is_active", Boolean(), nullable=False),
-        Column("created_at", DateTime(timezone=True), nullable=False),
-        Column("updated_at", DateTime(timezone=True), nullable=False),
-    )
-    old_schema_metadata.create_all(engine)
-    monkeypatch.setenv("DIONYSUS_DATABASE_URL", database_url)
-    monkeypatch.setenv("DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD", "correct horse battery staple")
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "bootstrap-admin",
-                "--username",
-                "root",
-                "--display-name",
-                "Root Admin",
-            ]
-        )
-
-    captured = capsys.readouterr()
-    combined_output = f"{captured.out}\n{captured.err}"
-    assert exc_info.value.code == 1
-    assert "alembic upgrade head" in combined_output
-    assert "bootstrap_locks" not in combined_output
-    assert "INSERT INTO" not in combined_output
-    assert "Traceback" not in combined_output
-    assert "sqlalchemy.exc" not in combined_output
-    assert "correct horse battery staple" not in combined_output

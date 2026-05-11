@@ -5,7 +5,7 @@ from sqlalchemy import Connection, Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from dionysus.app import create_app
-from dionysus.config import AppSettings, Environment
+from dionysus.config import AppSettings
 from dionysus.identity.machines import create_machine_credential, revoke_machine_credential
 from dionysus.models import Base, MachineCredential, MachineRefreshToken, MachineToken
 
@@ -17,13 +17,16 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
     return sessionmaker(bind=connection, autoflush=False, expire_on_commit=False)
 
 
-def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
+def _client_with_session_factory(
+    session_factory: sessionmaker[Session],
+    settings: AppSettings,
+) -> TestClient:
     app = create_app(
-        AppSettings(
-            environment=Environment.TEST,
-            database_url="sqlite:///:memory:",
-            machine_access_token_expires_minutes=15,
-            machine_refresh_token_expires_minutes=60,
+        settings.model_copy(
+            update={
+                "machine_access_token_expires_minutes": 15,
+                "machine_refresh_token_expires_minutes": 60,
+            }
         )
     )
     app.state.session_factory = session_factory
@@ -59,12 +62,15 @@ def _oauth_token_response(
     )
 
 
-def test_oauth_token_exchanges_client_credentials_for_bearer_pair(engine: Engine) -> None:
+def test_oauth_token_exchanges_client_credentials_for_bearer_pair(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         client_id, client_secret = _create_machine_credential(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,
@@ -91,12 +97,15 @@ def test_oauth_token_exchanges_client_credentials_for_bearer_pair(engine: Engine
     assert response.headers["pragma"] == "no-cache"
 
 
-def test_oauth_token_rejects_invalid_credentials_with_generic_401(engine: Engine) -> None:
+def test_oauth_token_rejects_invalid_credentials_with_generic_401(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         client_id, _client_secret = _create_machine_credential(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,
@@ -113,11 +122,14 @@ def test_oauth_token_rejects_invalid_credentials_with_generic_401(engine: Engine
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_oauth_token_rejects_unknown_client_with_same_generic_401(engine: Engine) -> None:
+def test_oauth_token_rejects_unknown_client_with_same_generic_401(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,
@@ -130,12 +142,15 @@ def test_oauth_token_rejects_unknown_client_with_same_generic_401(engine: Engine
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_oauth_token_rejects_unsupported_grant_type(engine: Engine) -> None:
+def test_oauth_token_rejects_unsupported_grant_type(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         client_id, client_secret = _create_machine_credential(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,
@@ -148,12 +163,15 @@ def test_oauth_token_rejects_unsupported_grant_type(engine: Engine) -> None:
     assert response.json() == {"detail": "Unsupported grant_type"}
 
 
-def test_oauth_token_accepts_form_encoded_body(engine: Engine) -> None:
+def test_oauth_token_accepts_form_encoded_body(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         client_id, client_secret = _create_machine_credential(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.post(
             "/api/oauth/token",
@@ -173,12 +191,15 @@ def test_oauth_token_accepts_form_encoded_body(engine: Engine) -> None:
     assert response.headers["pragma"] == "no-cache"
 
 
-def test_oauth_access_token_authenticates_against_api_me(engine: Engine) -> None:
+def test_oauth_access_token_authenticates_against_api_me(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         client_id, client_secret = _create_machine_credential(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
         token_response = _oauth_token_response(
             client,
             client_id=client_id,
@@ -205,7 +226,10 @@ def test_oauth_access_token_authenticates_against_api_me(engine: Engine) -> None
     assert body["auth_method"] == "bearer_token"
 
 
-def test_oauth_token_rejects_inactive_machine_credential(engine: Engine) -> None:
+def test_oauth_token_rejects_inactive_machine_credential(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
@@ -217,7 +241,7 @@ def test_oauth_token_rejects_inactive_machine_credential(engine: Engine) -> None
             assert credential is not None
             credential.is_active = False
             session.commit()
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,
@@ -229,7 +253,10 @@ def test_oauth_token_rejects_inactive_machine_credential(engine: Engine) -> None
     assert response.json() == {"detail": "Invalid client credentials"}
 
 
-def test_oauth_token_rejects_revoked_machine_credential(engine: Engine) -> None:
+def test_oauth_token_rejects_revoked_machine_credential(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
@@ -245,7 +272,7 @@ def test_oauth_token_rejects_revoked_machine_credential(engine: Engine) -> None:
                 now=datetime(2026, 5, 8, tzinfo=UTC),
             )
             session.commit()
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = _oauth_token_response(
             client,

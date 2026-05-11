@@ -15,7 +15,6 @@ from dionysus.models.findings import (
     ScannerKind,
 )
 from dionysus.models.identity import (
-    BootstrapLock,
     Group,
     GroupMembership,
     MachineCredential,
@@ -37,7 +36,6 @@ __all__ = [
     "AssetNodeType",
     "AuditLogEvent",
     "Base",
-    "BootstrapLock",
     "FindingComment",
     "FindingStatus",
     "FindingStatusChangeRequest",
