@@ -7,6 +7,7 @@ from dionysus.version_check import (
     VersionCheckError,
     bump_version,
     expected_version_for_title,
+    format_success_message,
     max_version,
     read_project_versions,
     validate_versions,
@@ -78,6 +79,38 @@ def test_validate_versions_accepts_expected_version(tmp_path: Path) -> None:
     write_project_versions(tmp_path, "0.3.1")
 
     validate_versions(tmp_path, "fix: handle stale findings", base_version="0.3.0")
+
+
+def test_validate_versions_returns_context_for_success_message(tmp_path: Path) -> None:
+    write_project_versions(tmp_path, "0.4.0")
+
+    result = validate_versions(tmp_path, "feat: add import summary", base_version="0.3.0")
+
+    assert result.base_version == "0.3.0"
+    assert result.bump_level == "minor"
+    assert result.expected_version == "0.4.0"
+    assert result.actual_version == "0.4.0"
+    assert result.versions == {
+        ".VERSION": "0.4.0",
+        "pyproject.toml": "0.4.0",
+        "frontend/package.json": "0.4.0",
+    }
+
+
+def test_format_success_message_explains_passed_check(tmp_path: Path) -> None:
+    write_project_versions(tmp_path, "0.3.1")
+    result = validate_versions(tmp_path, "ci: enforce version checks", base_version="0.3.0")
+
+    assert format_success_message(result) == "\n".join(
+        [
+            "version check passed:",
+            "- PR title 'ci: enforce version checks' requires a patch version bump.",
+            "- Base version is 0.3.0; expected version is 0.3.1.",
+            "- .VERSION is 0.3.1.",
+            "- pyproject.toml and frontend/package.json both match .VERSION.",
+            "- This PR can merge without the release workflow pushing a version commit to main.",
+        ]
+    )
 
 
 def test_validate_versions_rejects_missing_bump(tmp_path: Path) -> None:

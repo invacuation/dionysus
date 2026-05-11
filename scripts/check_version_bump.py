@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from dionysus.version_check import VersionCheckError, validate_versions
+from dionysus.version_check import VersionCheckError, format_success_message, validate_versions
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -28,11 +28,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        validate_versions(args.root, args.pr_title, args.base_version)
+        result = validate_versions(args.root, args.pr_title, args.base_version)
     except VersionCheckError as exc:
         print(f"version check failed: {exc}", file=sys.stderr)
         return 1
-    print("version check passed")
+    print(format_success_message(result))
     return 0
 
 
