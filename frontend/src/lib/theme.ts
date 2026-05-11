@@ -7,12 +7,25 @@ export type ResolvedThemeMode = Exclude<ThemeMode, "system">
 
 type ThemeModeReader = Pick<Storage, "getItem">
 type ThemeModeWriter = Pick<Storage, "setItem">
+type ThemeModeStorage = ThemeModeReader & ThemeModeWriter
 
 export function isThemeMode(value: string | null): value is ThemeMode {
   return value === "light" || value === "dark" || value === "system"
 }
 
-export function loadThemeMode(storage: ThemeModeReader): ThemeMode {
+export function safeThemeModeStorage(readStorage: () => Storage): ThemeModeStorage | null {
+  try {
+    return readStorage()
+  } catch {
+    return null
+  }
+}
+
+export function loadThemeMode(storage: ThemeModeReader | null): ThemeMode {
+  if (!storage) {
+    return "system"
+  }
+
   try {
     const storedMode = storage.getItem(THEME_MODE_STORAGE_KEY)
     return isThemeMode(storedMode) ? storedMode : "system"
@@ -21,7 +34,11 @@ export function loadThemeMode(storage: ThemeModeReader): ThemeMode {
   }
 }
 
-export function storeThemeMode(storage: ThemeModeWriter, mode: ThemeMode) {
+export function storeThemeMode(storage: ThemeModeWriter | null, mode: ThemeMode) {
+  if (!storage) {
+    return
+  }
+
   try {
     storage.setItem(THEME_MODE_STORAGE_KEY, mode)
   } catch {

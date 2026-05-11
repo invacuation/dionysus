@@ -4,6 +4,7 @@ import {
   applyThemeMode,
   loadThemeMode,
   resolveThemeMode,
+  safeThemeModeStorage,
   storeThemeMode,
   THEME_MODE_STORAGE_KEY,
   type ThemeMode,
@@ -27,9 +28,18 @@ function documentElementWithClasses(...classNames: string[]) {
 }
 
 describe("theme mode persistence", () => {
+  test("treats blocked storage access as unavailable", () => {
+    expect(
+      safeThemeModeStorage(() => {
+        throw new DOMException("Access denied", "SecurityError")
+      }),
+    ).toBeNull()
+  })
+
   test("defaults to system mode when no valid preference is stored", () => {
     expect(loadThemeMode({ getItem: () => null })).toBe("system")
     expect(loadThemeMode({ getItem: () => "dim" })).toBe("system")
+    expect(loadThemeMode(null)).toBe("system")
   })
 
   test("stores the selected mode outside of authentication state", () => {

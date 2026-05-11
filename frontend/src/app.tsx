@@ -14,6 +14,7 @@ import {
   applyThemeMode,
   loadThemeMode,
   resolveThemeMode,
+  safeThemeModeStorage,
   storeThemeMode,
   type ThemeMode,
 } from "@/lib/theme"
@@ -23,7 +24,8 @@ const currentActorQueryKey = ["auth", "me"] as const
 export function App() {
   const queryClient = useQueryClient()
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => routeFromLocation())
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode(window.localStorage))
+  const [themeStorage] = useState(() => safeThemeModeStorage(() => window.localStorage))
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode(themeStorage))
   const [systemPrefersDark, setSystemPrefersDark] = useState(() => getSystemPrefersDark())
   const currentActorQuery = useQuery({
     queryKey: currentActorQueryKey,
@@ -78,7 +80,7 @@ export function App() {
 
   function changeThemeMode(mode: ThemeMode) {
     setThemeMode(mode)
-    storeThemeMode(window.localStorage, mode)
+    storeThemeMode(themeStorage, mode)
   }
 
   if (currentActorQuery.isPending) {
