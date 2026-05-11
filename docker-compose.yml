@@ -7,13 +7,17 @@ services:
       - "8000:8000"
     environment:
       DIONYSUS_ENVIRONMENT: development
-      DIONYSUS_DATABASE_URL: postgresql+psycopg://dionysus:dionysus@db:5432/dionysus
+      DIONYSUS_DATABASE_URL: ${DIONYSUS_DATABASE_URL:-sqlite:////app/var/dionysus.db}
+    volumes:
+      - ./var:/app/var
     depends_on:
       db:
         condition: service_healthy
+        required: false
 
   db:
     image: postgres:16
+    profiles: ["postgres"]
     environment:
       POSTGRES_USER: dionysus
       POSTGRES_PASSWORD: dionysus
