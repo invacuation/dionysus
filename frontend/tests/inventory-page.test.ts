@@ -232,6 +232,17 @@ describe("normalizeGracePercent", () => {
   })
 })
 
+describe("project grace percentage UI", () => {
+  test("keeps the grace percentage value on one line", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).toContain('className="whitespace-nowrap">{project.grace_period_percent}%')
+  })
+})
+
 describe("filterAssetTree", () => {
   test("matches asset fields and keeps ancestor folders for context", () => {
     const releaseTarget = asset({

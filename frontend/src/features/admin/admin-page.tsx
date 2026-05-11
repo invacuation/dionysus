@@ -2206,7 +2206,7 @@ function AuditLogTable({
               <Td>
                 <div className="font-medium">{actorLabel(event)}</div>
                 <div className="mt-1 break-all text-xs text-muted-foreground">
-                  {event.actor_principal_type || "Unknown principal"}
+                  {actorPrincipalLabel(event)}
                 </div>
               </Td>
               <Td>
@@ -2442,8 +2442,27 @@ function Td({
   return <td className={`max-w-72 px-4 py-3 ${className}`}>{children}</td>
 }
 
-function actorLabel(event: AuditLogEntry): string {
+export function actorLabel(event: AuditLogEntry): string {
+  if (isUnauthenticatedLoginFailure(event)) {
+    return "N/A"
+  }
   return event.actor_display || event.actor_principal_type || "Unknown actor"
+}
+
+export function actorPrincipalLabel(event: AuditLogEntry): string {
+  if (isUnauthenticatedLoginFailure(event)) {
+    return "N/A"
+  }
+  return event.actor_principal_type || "Unknown principal"
+}
+
+function isUnauthenticatedLoginFailure(event: AuditLogEntry): boolean {
+  return (
+    event.event_type === "auth.login.failure" &&
+    !event.actor_display &&
+    !event.actor_principal_type &&
+    !event.actor_principal_id
+  )
 }
 
 export function importUploaderLabel(attempt: AdminImportAttempt): string {
