@@ -29,6 +29,9 @@ class AppSettings(BaseSettings):
     session_absolute_timeout_minutes: int = Field(default=480, ge=1)
     machine_access_token_expires_minutes: int = Field(default=15, ge=1)
     machine_refresh_token_expires_minutes: int = Field(default=60, ge=1)
+    bootstrap_admin_username: str | None = None
+    bootstrap_admin_password: str | None = None
+    bootstrap_admin_display_name: str | None = None
     raw_report_storage_backend: str = "none"
     raw_report_retention_days: int = Field(default=0, ge=0)
     max_report_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1)

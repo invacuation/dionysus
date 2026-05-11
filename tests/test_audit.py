@@ -7,9 +7,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
-from dionysus.app import create_app
+from conftest import create_prepared_test_app
 from dionysus.audit import record_audit_event
-from dionysus.config import AppSettings, Environment
 from dionysus.identity.permissions import assign_permission
 from dionysus.identity.sessions import create_session
 from dionysus.identity.users import create_user
@@ -24,7 +23,7 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_prepared_test_app()
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -35,7 +34,7 @@ def _create_user_and_session_cookie(session_factory: sessionmaker[Session]) -> s
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         assign_permission(
             session,
@@ -69,7 +68,7 @@ def _create_user_with_permission_and_session_cookie(
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         if permission is not None:
             assign_permission(

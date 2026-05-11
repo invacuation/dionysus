@@ -22,11 +22,13 @@ from dionysus.identity.sessions import create_session, revoke_session
 from dionysus.identity.users import create_user
 from dionysus.models.identity import PrincipalType
 
+TEST_PASSWORD = "correct horse battery staple"  # noqa: S105
+
 authenticated_actor_dependency = Depends(get_authenticated_actor)
 
 
 def test_resolve_authenticated_actor_returns_valid_session_actor(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, session_record = create_session(
         db_session,
         user=user,
@@ -100,7 +102,7 @@ def test_resolve_authenticated_actor_returns_valid_bearer_actor(db_session: Sess
 def test_resolve_authenticated_actor_uses_bearer_when_both_credentials_present(
     db_session: Session,
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, _session_record = create_session(
         db_session,
         user=user,
@@ -142,7 +144,7 @@ def test_resolve_authenticated_actor_uses_bearer_when_both_credentials_present(
 def test_resolve_authenticated_actor_rejects_invalid_bearer_without_session_fallback(
     db_session: Session,
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, _session_record = create_session(
         db_session,
         user=user,
@@ -168,7 +170,7 @@ def test_resolve_authenticated_actor_rejects_invalid_bearer_without_session_fall
 def test_resolve_authenticated_actor_falls_back_to_session_when_no_bearer(
     db_session: Session,
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, _session_record = create_session(
         db_session,
         user=user,
@@ -196,7 +198,7 @@ def test_resolve_authenticated_actor_falls_back_to_session_when_no_bearer(
 def test_resolve_authenticated_actor_rejects_inactive_session_user(
     db_session: Session,
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, _session_record = create_session(
         db_session,
         user=user,
@@ -252,7 +254,7 @@ def test_resolve_authenticated_actor_rejects_revoked_machine_token(db_session: S
 def test_resolve_authenticated_actor_rejects_expired_or_revoked_session(
     db_session: Session,
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     session_token, session_record = create_session(
         db_session,
         user=user,

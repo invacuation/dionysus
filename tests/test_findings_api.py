@@ -5,8 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from dionysus.app import create_app
-from dionysus.config import AppSettings, Environment
+from conftest import create_prepared_test_app
 from dionysus.identity.bootstrap import ADMIN_PERMISSION
 from dionysus.identity.machines import create_machine_credential, exchange_machine_client_secret
 from dionysus.identity.permissions import assign_permission
@@ -31,7 +30,7 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
-    app = create_app(AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:"))
+    app = create_prepared_test_app()
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -49,7 +48,7 @@ def _login_user(
             session,
             username=username,
             display_name=display_name,
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         if grant_admin:
             assign_permission(
@@ -66,7 +65,7 @@ def _login_user(
 
     response = client.post(
         "/api/auth/session",
-        json={"username": username, "password": "password"},
+        json={"username": username, "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
     return user_id
@@ -1216,8 +1215,8 @@ def test_findings_api_detail_resolves_activity_display_names_for_users_and_machi
             bob = create_user(
                 session,
                 username="bob",
-                display_name="",
-                password="password",  # noqa: S106 - test fixture password
+                display_name="bob",
+                password="correct horse battery staple",  # noqa: S106 - test fixture password
             )
             _raw_secret, credential = create_machine_credential(session, name="review-bot")
             request = FindingStatusChangeRequest(
