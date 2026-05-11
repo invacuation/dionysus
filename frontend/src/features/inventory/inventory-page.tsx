@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Folder,
   FolderTree,
+  Info,
   PackageSearch,
   Plus,
   Save,
@@ -814,20 +815,102 @@ function ProjectSettingsSummary({
         <p className="text-sm text-muted-foreground">{project.description}</p>
       ) : null}
       <dl className="grid gap-3 text-sm">
-        <DetailRow label="SLA tracking">
+        <DetailRow
+          description="Controls whether findings in this project count toward SLA timing."
+          label="SLA tracking"
+        >
           <StatusPill enabled={project.sla_tracking_enabled} />
         </DetailRow>
-        <DetailRow label="SLA reporting">
+        <DetailRow
+          description="Controls whether this project appears in SLA reporting and overview risk counts."
+          label="SLA reporting"
+        >
           <StatusPill enabled={project.sla_reporting_enabled} />
         </DetailRow>
-        <DetailRow label="Peer review">
-          <StatusPill enabled={project.require_peer_review_for_status_changes} />
+        <DetailRow
+          description="Requires another reviewer to approve finding status changes for this project."
+          label="Peer review"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill enabled={project.require_peer_review_for_status_changes} />
+            <Button
+              className="max-w-full whitespace-normal"
+              disabled={updateProjectMutation.isPending}
+              onClick={() =>
+                updateProjectMutation.mutate({
+                  require_peer_review_for_status_changes:
+                    !project.require_peer_review_for_status_changes,
+                })
+              }
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {updateProjectMutation.isPending
+                ? "Saving..."
+                : project.require_peer_review_for_status_changes
+                  ? "Disable peer review"
+                  : "Require peer review"}
+            </Button>
+          </div>
         </DetailRow>
-        <DetailRow label="Grace period">
-          <span>{project.grace_period_enabled ? "Enabled" : "Disabled"}</span>
+        <DetailRow
+          description="Controls whether findings can use the secondary grace-period SLA threshold."
+          label="Grace period"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill enabled={project.grace_period_enabled} />
+            <Button
+              className="max-w-full whitespace-normal"
+              disabled={updateProjectMutation.isPending}
+              onClick={() =>
+                updateProjectMutation.mutate({
+                  grace_period_enabled: !project.grace_period_enabled,
+                })
+              }
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {project.grace_period_enabled ? "Disable grace period" : "Enable grace period"}
+            </Button>
+          </div>
         </DetailRow>
-        <DetailRow label="Grace percent">
-          <span>{project.grace_period_percent}%</span>
+        <DetailRow
+          description="Sets the secondary SLA percentage used when grace period is enabled."
+          label="Grace period percentage"
+        >
+          <form
+            className="grid items-center gap-2 sm:grid-cols-[4rem_auto]"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const normalizedGracePercent = normalizeGracePercent(
+                gracePercent,
+                project.grace_period_percent,
+              )
+              updateProjectMutation.mutate({
+                grace_period_enabled: project.grace_period_enabled,
+                grace_period_percent: normalizedGracePercent,
+              })
+            }}
+          >
+            <Input
+              aria-label="Grace percent"
+              className="text-center"
+              inputMode="numeric"
+              onChange={(event) => setGracePercent(event.target.value)}
+              value={gracePercent}
+            />
+            <Button
+              className="max-w-full whitespace-normal"
+              disabled={updateProjectMutation.isPending}
+              size="sm"
+              type="submit"
+              variant="outline"
+            >
+              Save percentage
+            </Button>
+          </form>
         </DetailRow>
       </dl>
       {updateProjectMutation.isError ? (
@@ -836,25 +919,7 @@ function ProjectSettingsSummary({
       {deleteProjectMutation.isError ? (
         <StateMessage tone="error">{errorMessage(deleteProjectMutation.error)}</StateMessage>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={updateProjectMutation.isPending}
-          onClick={() =>
-            updateProjectMutation.mutate({
-              require_peer_review_for_status_changes:
-                !project.require_peer_review_for_status_changes,
-            })
-          }
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {updateProjectMutation.isPending
-            ? "Saving..."
-            : project.require_peer_review_for_status_changes
-              ? "Disable peer review"
-              : "Require peer review"}
-        </Button>
+      <div className="border-t pt-4">
         <Button
           disabled={deleteProjectMutation.isPending}
           onClick={handleDeleteProject}
@@ -866,50 +931,6 @@ function ProjectSettingsSummary({
           Delete project
         </Button>
       </div>
-      <form
-        className="space-y-3 border-t pt-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          const normalizedGracePercent = normalizeGracePercent(
-            gracePercent,
-            project.grace_period_percent,
-          )
-          updateProjectMutation.mutate({
-            grace_period_enabled: project.grace_period_enabled,
-            grace_period_percent: normalizedGracePercent,
-          })
-        }}
-      >
-        <div>
-          <h3 className="text-sm font-medium">Grace period</h3>
-          <p className="text-xs text-muted-foreground">
-            Set the secondary SLA percentage for this project.
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-          <Input
-            aria-label="Grace percent"
-            inputMode="numeric"
-            onChange={(event) => setGracePercent(event.target.value)}
-            value={gracePercent}
-          />
-          <Button
-            disabled={updateProjectMutation.isPending}
-            onClick={() =>
-              updateProjectMutation.mutate({
-                grace_period_enabled: !project.grace_period_enabled,
-              })
-            }
-            type="button"
-            variant="outline"
-          >
-            {project.grace_period_enabled ? "Disable grace period" : "Enable grace period"}
-          </Button>
-          <Button disabled={updateProjectMutation.isPending} type="submit" variant="outline">
-            Save grace
-          </Button>
-        </div>
-      </form>
     </div>
   )
 }
@@ -1092,10 +1113,30 @@ function AssetDetail({
   )
 }
 
-function DetailRow({ children, label }: { children: ReactNode; label: string }) {
+function DetailRow({
+  children,
+  description,
+  label,
+}: {
+  children: ReactNode
+  description?: string
+  label: string
+}) {
   return (
     <div className="grid gap-1 border-b pb-3 last:border-b-0 last:pb-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        {description ? (
+          <span
+            aria-label={`${label}: ${description}`}
+            className="inline-flex text-muted-foreground"
+            role="img"
+            title={description}
+          >
+            <Info className="size-3.5" aria-hidden="true" />
+          </span>
+        ) : null}
+      </dt>
       <dd className="min-w-0">{children}</dd>
     </div>
   )

@@ -535,10 +535,10 @@ export function inventoryScopeLabel(
   assets: Asset[],
 ): string {
   if (!scope.projectId) {
-    return "Entire inventory"
+    return "the entire inventory"
   }
   const project = projects.find((candidate) => candidate.id === scope.projectId)
-  const projectName = project?.name ?? "Selected project"
+  const projectName = project?.name ?? "selected project"
   if (!scope.assetId) {
     return projectName
   }
@@ -1955,11 +1955,15 @@ function DetailTerm({ label, value }: { label: string; value: string }) {
   )
 }
 
-function resultLabel(isLoading: boolean, count: number, scopeLabel = "Entire inventory"): string {
+export function resultLabel(
+  isLoading: boolean,
+  count: number,
+  scopeLabel = "the entire inventory",
+): string {
   if (isLoading) {
     return "Loading..."
   }
-  return `${new Intl.NumberFormat().format(count)} result${count === 1 ? "" : "s"} in ${scopeLabel}`
+  return `${new Intl.NumberFormat().format(count)} finding${count === 1 ? "" : "s"} in ${scopeLabel}`
 }
 
 function emptyFallback(value: string | null): string {

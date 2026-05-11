@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  actorLabel,
+  actorPrincipalLabel,
   auditLogParams,
   filterAuditLogEvents,
   formatAuditMetadataForDisplay,
@@ -156,6 +158,33 @@ describe("auditLogParams", () => {
         limit: "0",
       }),
     ).toEqual({ limit: 50 })
+  })
+})
+
+describe("audit login failure labels", () => {
+  test("uses N/A when a failed login has no actor or principal", () => {
+    const event = {
+      ...baseEvent,
+      event_type: "auth.login.failure",
+      actor_display: null,
+      actor_principal_type: null,
+      actor_principal_id: null,
+    }
+
+    expect(actorLabel(event)).toBe("N/A")
+    expect(actorPrincipalLabel(event)).toBe("N/A")
+  })
+
+  test("keeps unknown wording for non-login-failure events without actor details", () => {
+    const event = {
+      ...baseEvent,
+      actor_display: null,
+      actor_principal_type: null,
+      actor_principal_id: null,
+    }
+
+    expect(actorLabel(event)).toBe("Unknown actor")
+    expect(actorPrincipalLabel(event)).toBe("Unknown principal")
   })
 })
 
