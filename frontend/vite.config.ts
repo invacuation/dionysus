@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-const appVersion = readFileSync(new URL("../.VERSION", import.meta.url), "utf8").trim()
+const appVersion = readFileSync(new URL("../.dionysus-version", import.meta.url), "utf8").trim()
 
 export default defineConfig({
   define: {

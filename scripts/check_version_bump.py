@@ -14,7 +14,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--pr-title", required=True, help="Pull request title to validate.")
     parser.add_argument(
         "--base-version",
-        help="Optional base version override. Defaults to max(origin/main:.VERSION, v* tags).",
+        help=(
+            "Optional base version override. Defaults to "
+            "max(origin/main:.dionysus-version, v* tags)."
+        ),
     )
     parser.add_argument(
         "--root",

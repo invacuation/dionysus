@@ -19,7 +19,7 @@ ROOT = Path(__file__).parents[1]
 
 
 def write_project_versions(root: Path, version: str) -> None:
-    (root / ".VERSION").write_text(f"{version}\n", encoding="utf-8")
+    (root / ".dionysus-version").write_text(f"{version}\n", encoding="utf-8")
     (root / "pyproject.toml").write_text(
         f'[project]\nname = "example"\nversion = "{version}"\n',
         encoding="utf-8",
@@ -87,7 +87,7 @@ def test_read_project_versions_reads_all_canonical_files(tmp_path: Path) -> None
     write_project_versions(tmp_path, "0.3.1")
 
     assert read_project_versions(tmp_path) == {
-        ".VERSION": "0.3.1",
+        ".dionysus-version": "0.3.1",
         "pyproject.toml": "0.3.1",
         "frontend/package.json": "0.3.1",
     }
@@ -108,7 +108,7 @@ def test_validate_versions_returns_context_for_success_message(tmp_path: Path) -
     assert result.bump_level == "minor"
     assert result.expected_version == "0.4.0"
     assert result.versions == {
-        ".VERSION": "0.4.0",
+        ".dionysus-version": "0.4.0",
         "pyproject.toml": "0.4.0",
         "frontend/package.json": "0.4.0",
     }
@@ -123,7 +123,7 @@ def test_format_success_message_explains_passed_check(tmp_path: Path) -> None:
             "version check passed:",
             "- PR title 'ci: enforce version checks' requires a patch version bump.",
             "- Base version is 0.3.0; expected version is 0.3.1.",
-            "- .VERSION has been bumped to 0.3.1.",
+            "- .dionysus-version has been bumped to 0.3.1.",
             "- pyproject.toml has been bumped to 0.3.1.",
             "- frontend/package.json has been bumped to 0.3.1.",
         ]
@@ -148,7 +148,7 @@ def test_failure_message_reports_each_file_that_needs_update(tmp_path: Path) -> 
             "version check failed:",
             "- PR title 'fix: handle stale findings' requires a patch version bump.",
             "- Base version is 0.3.0; expected version is 0.3.1.",
-            "- .VERSION is 0.3.0; change it to 0.3.1.",
+            "- .dionysus-version is 0.3.0; change it to 0.3.1.",
             "- pyproject.toml is 0.3.0; change it to 0.3.1.",
             "- frontend/package.json is 0.3.0; change it to 0.3.1.",
         ]
@@ -170,7 +170,7 @@ def test_validate_versions_rejects_mismatched_project_versions(tmp_path: Path) -
             "version check failed:",
             "- PR title 'fix: handle stale findings' requires a patch version bump.",
             "- Base version is 0.3.0; expected version is 0.3.1.",
-            "- .VERSION has been bumped to 0.3.1.",
+            "- .dionysus-version has been bumped to 0.3.1.",
             "- pyproject.toml has been bumped to 0.3.1.",
             "- frontend/package.json is 0.3.0; change it to 0.3.1.",
         ]
