@@ -72,8 +72,7 @@ def test_create_app_reports_schema_not_ready_when_bootstrap_schema_is_missing() 
         create_app(settings)
 
     assert str(exc_info.value) == (
-        "startup bootstrap failed: database schema is not up to date; "
-        "run migrations and retry"
+        "startup bootstrap failed: database schema is not up to date; run migrations and retry"
     )
 
 

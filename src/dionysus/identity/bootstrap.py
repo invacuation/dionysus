@@ -89,9 +89,7 @@ def bootstrap_admin_from_settings(session: Session, settings: AppSettings) -> Us
 
     if _users_exist(session):
         if bootstrap_settings_present:
-            logger.warning(
-                "bootstrap admin environment variables are set but users already exist"
-            )
+            logger.warning("bootstrap admin environment variables are set but users already exist")
         return None
 
     if not settings.bootstrap_admin_username or not settings.bootstrap_admin_password:
@@ -109,9 +107,7 @@ def bootstrap_admin_from_settings(session: Session, settings: AppSettings) -> Us
             )
     except IntegrityError as exc:
         if _users_exist(session):
-            logger.warning(
-                "bootstrap admin environment variables are set but users already exist"
-            )
+            logger.warning("bootstrap admin environment variables are set but users already exist")
             return None
         msg = "bootstrap admin could not be created"
         raise BootstrapAdminError(msg) from exc

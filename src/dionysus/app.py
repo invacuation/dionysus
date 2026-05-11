@@ -22,8 +22,7 @@ from dionysus.middleware.request_size import RequestBodyLimitMiddleware
 from dionysus.routes.health import router as health_router
 
 SCHEMA_NOT_READY_MESSAGE = (
-    "startup bootstrap failed: database schema is not up to date; "
-    "run migrations and retry"
+    "startup bootstrap failed: database schema is not up to date; run migrations and retry"
 )
 
 

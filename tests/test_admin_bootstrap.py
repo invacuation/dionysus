@@ -156,10 +156,7 @@ def test_bootstrap_admin_from_settings_warns_and_skips_when_users_exist(
         )
 
     assert user is None
-    assert (
-        "bootstrap admin environment variables are set but users already exist"
-        in caplog.text
-    )
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
     assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
 
 
@@ -211,10 +208,7 @@ def test_bootstrap_admin_from_settings_warns_and_skips_when_racing_user_creation
 
     assert user is None
     assert users_exist_calls == 2
-    assert (
-        "bootstrap admin environment variables are set but users already exist"
-        in caplog.text
-    )
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
     assert db_session.scalar(select(User).where(User.username == "alice@example.com")) is not None
     assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
 
@@ -236,8 +230,7 @@ def test_bootstrap_admin_from_settings_skips_silently_when_users_exist_without_s
 
     assert user is None
     assert (
-        "bootstrap admin environment variables are set but users already exist"
-        not in caplog.text
+        "bootstrap admin environment variables are set but users already exist" not in caplog.text
     )
 
 

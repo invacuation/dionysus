@@ -123,8 +123,7 @@ def test_authenticate_user_returns_none_for_malformed_username(db_session: Sessi
     db_session.commit()
 
     assert (
-        authenticate_user(db_session, "alice@@example.com", "correct horse battery staple")
-        is None
+        authenticate_user(db_session, "alice@@example.com", "correct horse battery staple") is None
     )
 
 
