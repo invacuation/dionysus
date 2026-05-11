@@ -232,6 +232,77 @@ describe("normalizeGracePercent", () => {
   })
 })
 
+describe("project grace percentage UI", () => {
+  test("keeps grace period controls in their dedicated sections", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).toContain('<DetailRow\n          description="Controls whether findings can use the secondary grace-period SLA threshold."')
+    expect(source).toContain('<DetailRow\n          description="Sets the secondary SLA percentage used when grace period is enabled."')
+    expect(source).not.toContain('<DetailRow label="Grace percent">')
+    expect(source).toContain('className="grid items-center gap-2 sm:grid-cols-[4rem_auto]"')
+    expect(source).toContain('className="text-center"')
+    expect(source).toContain('aria-label="Grace percent"')
+    expect(source).toContain("Save percentage")
+    expect(source).toContain('className="flex flex-wrap items-center gap-2"')
+    expect(source).toContain('className="max-w-full whitespace-normal"')
+  })
+
+  test("adds info hints to project settings sections", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).toContain("Controls whether findings in this project count toward SLA timing.")
+    expect(source).toContain("Controls whether this project appears in SLA reporting and overview risk counts.")
+    expect(source).toContain("Requires another reviewer to approve finding status changes for this project.")
+    expect(source).toContain("Controls whether findings can use the secondary grace-period SLA threshold.")
+    expect(source).toContain("Sets the secondary SLA percentage used when grace period is enabled.")
+    expect(source).toContain('title={description}')
+    expect(source).toContain("<Info")
+  })
+
+  test("keeps grace percentage save button styled with compact project actions", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    const savePercentageIndex = source.indexOf("Save percentage")
+    const submitIndex = source.lastIndexOf('type="submit"', savePercentageIndex)
+    const outlineIndex = source.lastIndexOf('variant="outline"', savePercentageIndex)
+
+    expect(savePercentageIndex).toBeGreaterThan(-1)
+    expect(submitIndex).toBeGreaterThan(-1)
+    expect(outlineIndex).toBeGreaterThan(-1)
+  })
+
+  test("keeps project actions with their sections", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+    const peerReviewLabelIndex = source.indexOf('label="Peer review"')
+    const requirePeerReviewIndex = source.indexOf('"Require peer review"')
+    const gracePeriodLabelIndex = source.indexOf('label="Grace period"')
+    const enableGracePeriodIndex = source.indexOf('"Enable grace period"')
+    const gracePercentLabelIndex = source.indexOf('label="Grace period percentage"')
+    const graceFormIndex = source.indexOf('aria-label="Grace percent"')
+    const deleteProjectIndex = source.indexOf("Delete project")
+
+    expect(peerReviewLabelIndex).toBeGreaterThan(-1)
+    expect(requirePeerReviewIndex).toBeGreaterThan(peerReviewLabelIndex)
+    expect(requirePeerReviewIndex).toBeLessThan(gracePeriodLabelIndex)
+    expect(enableGracePeriodIndex).toBeGreaterThan(gracePeriodLabelIndex)
+    expect(enableGracePeriodIndex).toBeLessThan(gracePercentLabelIndex)
+    expect(graceFormIndex).toBeGreaterThan(gracePercentLabelIndex)
+    expect(deleteProjectIndex).toBeGreaterThan(graceFormIndex)
+  })
+})
+
 describe("filterAssetTree", () => {
   test("matches asset fields and keeps ancestor folders for context", () => {
     const releaseTarget = asset({
