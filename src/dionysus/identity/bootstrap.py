@@ -105,6 +105,11 @@ def bootstrap_admin_from_settings(session: Session, settings: AppSettings) -> Us
                 display_name=display_name,
                 password=settings.bootstrap_admin_password,
             )
+    except BootstrapAdminError as exc:
+        if _is_users_already_exist_error(exc) and _users_exist(session):
+            logger.warning("bootstrap admin environment variables are set but users already exist")
+            return None
+        raise
     except IntegrityError as exc:
         if _users_exist(session):
             logger.warning("bootstrap admin environment variables are set but users already exist")
@@ -117,6 +122,12 @@ def _users_exist(session: Session) -> bool:
     """Return whether any user account exists."""
 
     return (session.scalar(select(func.count()).select_from(User)) or 0) > 0
+
+
+def _is_users_already_exist_error(exc: BootstrapAdminError) -> bool:
+    """Return whether a bootstrap failure means another user already exists."""
+
+    return "users already exist" in str(exc)
 
 
 def _create_admin_user(

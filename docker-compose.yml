@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DIONYSUS_ENVIRONMENT: development
+      DIONYSUS_ENVIRONMENT: local
       DIONYSUS_DATABASE_URL: ${DIONYSUS_DATABASE_URL:-sqlite:////app/var/dionysus.db}
       DIONYSUS_BOOTSTRAP_ADMIN_USERNAME: ${DIONYSUS_BOOTSTRAP_ADMIN_USERNAME:-admin}
       DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD: ${DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD:-change-me-now-please}

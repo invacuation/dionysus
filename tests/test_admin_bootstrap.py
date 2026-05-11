@@ -213,6 +213,60 @@ def test_bootstrap_admin_from_settings_warns_and_skips_when_racing_user_creation
     assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
 
 
+def test_bootstrap_admin_from_settings_warns_when_user_appears_before_inner_check(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    original_users_exist = bootstrap_service._users_exist
+    users_exist_calls = 0
+
+    def users_exist_after_initial_race_check(session: Session) -> bool:
+        nonlocal users_exist_calls
+        users_exist_calls += 1
+        if users_exist_calls == 1:
+            return False
+        return original_users_exist(session)
+
+    def raise_users_exist_error(*args: object, **kwargs: object) -> None:
+        msg = "users already exist; bootstrap admin is only allowed before user creation"
+        raise BootstrapAdminError(msg)
+
+    monkeypatch.setattr(
+        bootstrap_service,
+        "_users_exist",
+        users_exist_after_initial_race_check,
+    )
+    monkeypatch.setattr(
+        bootstrap_service,
+        "bootstrap_admin_user",
+        raise_users_exist_error,
+    )
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106
+            ),
+        )
+
+    assert user is None
+    assert users_exist_calls == 2
+    assert "bootstrap admin environment variables are set but users already exist" in caplog.text
+    assert db_session.scalar(select(User).where(User.username == "alice@example.com")) is not None
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
 def test_bootstrap_admin_from_settings_skips_silently_when_users_exist_without_settings(
     db_session: Session,
     caplog: pytest.LogCaptureFixture,

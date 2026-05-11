@@ -4,8 +4,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
+from dionysus import app as app_module
 from dionysus.app import create_app
 from dionysus.config import AppSettings, Environment
 from dionysus.identity.bootstrap import BootstrapAdminError
@@ -74,6 +76,24 @@ def test_create_app_reports_schema_not_ready_when_bootstrap_schema_is_missing() 
     assert str(exc_info.value) == (
         "startup bootstrap failed: database schema is not up to date; run migrations and retry"
     )
+
+
+def test_create_app_reports_schema_not_ready_when_bootstrap_query_fails(
+    prepared_app_settings: AppSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_programming_error(*args: object, **kwargs: object) -> None:
+        raise ProgrammingError("select secret from missing_table", {}, Exception("missing table"))
+
+    monkeypatch.setattr(app_module, "bootstrap_admin_from_settings", raise_programming_error)
+
+    with pytest.raises(BootstrapAdminError) as exc_info:
+        create_app(prepared_app_settings)
+
+    assert str(exc_info.value) == (
+        "startup bootstrap failed: database schema is not up to date; run migrations and retry"
+    )
+    assert "missing_table" not in str(exc_info.value)
 
 
 def test_estate_overview_excludes_sla_reporting_opt_out_from_sla_counts(

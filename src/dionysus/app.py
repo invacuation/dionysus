@@ -1,7 +1,7 @@
 """FastAPI application factory for Dionysus."""
 
 from fastapi import FastAPI
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from dionysus.api import router as api_router
@@ -66,7 +66,7 @@ def _bootstrap_admin(
         try:
             bootstrap_admin_from_settings(session, settings)
             session.commit()
-        except OperationalError as exc:
+        except SQLAlchemyError as exc:
             session.rollback()
             raise BootstrapAdminError(SCHEMA_NOT_READY_MESSAGE) from exc
         except Exception:
