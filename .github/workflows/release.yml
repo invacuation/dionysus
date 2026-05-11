@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    name: semantic release and version sync
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: set up node
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx --yes \
+            -p semantic-release \
+            -p @semantic-release/commit-analyzer \
+            -p @semantic-release/release-notes-generator \
+            -p @semantic-release/github \
+            semantic-release
+
+      - name: sync .VERSION to latest release tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No release tag found; nothing to sync"
+            exit 0
+          fi
+
+          VERSION="${LATEST_TAG#v}"
+          CURRENT_VERSION=$(tr -d '[:space:]' < .VERSION)
+
+          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+            echo ".VERSION already up to date ($VERSION)"
+            exit 0
+          fi
+
+          printf "%s\n" "$VERSION" > .VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .VERSION
+          git commit -m "chore(release): sync version file to $VERSION [skip ci]"
+          git push
