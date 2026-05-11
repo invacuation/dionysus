@@ -160,3 +160,37 @@ jobs:
           path: |
             frontend/test-results/
             frontend/playwright-report/
+
+  docker-compose:
+    name: docker compose smoke
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: build app image
+        run: docker compose build app
+
+      - name: start app
+        run: docker compose up --build -d app
+
+      - name: wait for app
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/ > /tmp/dionysus-index.html; then
+              grep -q '<div id="root"></div>' /tmp/dionysus-index.html
+              exit 0
+            fi
+            docker compose ps
+            docker compose logs --no-color --tail=80 app
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs --no-color app
+          exit 1
+
+      - name: stop app
+        if: always()
+        run: docker compose down --volumes --remove-orphans

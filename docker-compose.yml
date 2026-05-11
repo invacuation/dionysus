@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DIONYSUS_ENVIRONMENT: development
+      DIONYSUS_ENVIRONMENT: local
       DIONYSUS_DATABASE_URL: ${DIONYSUS_DATABASE_URL:-sqlite:////app/var/dionysus.db}
     volumes:
       - ./var:/app/var
