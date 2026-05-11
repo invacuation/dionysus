@@ -11,6 +11,7 @@ SETTINGS_ENV_VARS = (
     "DIONYSUS_MACHINE_REFRESH_TOKEN_EXPIRES_MINUTES",
     "DIONYSUS_RAW_REPORT_STORAGE_BACKEND",
     "DIONYSUS_RAW_REPORT_RETENTION_DAYS",
+    "DIONYSUS_MAX_REPORT_UPLOAD_BYTES",
 )
 
 
@@ -40,6 +41,7 @@ def test_default_settings_use_local_sqlite(monkeypatch) -> None:
     assert settings.machine_refresh_token_expires_minutes == 60
     assert settings.raw_report_storage_backend == "none"
     assert settings.raw_report_retention_days == 0
+    assert settings.max_report_upload_bytes == 25 * 1024 * 1024
 
 
 def test_settings_read_environment_variables(monkeypatch) -> None:
@@ -52,6 +54,7 @@ def test_settings_read_environment_variables(monkeypatch) -> None:
     monkeypatch.setenv("DIONYSUS_MACHINE_REFRESH_TOKEN_EXPIRES_MINUTES", "30")
     monkeypatch.setenv("DIONYSUS_RAW_REPORT_STORAGE_BACKEND", "local")
     monkeypatch.setenv("DIONYSUS_RAW_REPORT_RETENTION_DAYS", "7")
+    monkeypatch.setenv("DIONYSUS_MAX_REPORT_UPLOAD_BYTES", "10485760")
 
     settings = DotenvFreeAppSettings()
 
@@ -63,3 +66,4 @@ def test_settings_read_environment_variables(monkeypatch) -> None:
     assert settings.machine_refresh_token_expires_minutes == 30
     assert settings.raw_report_storage_backend == "local"
     assert settings.raw_report_retention_days == 7
+    assert settings.max_report_upload_bytes == 10 * 1024 * 1024
