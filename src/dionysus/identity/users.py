@@ -1,10 +1,61 @@
 """User account creation and password authentication services."""
 
+import unicodedata
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from dionysus.models.identity import User, UserPasswordCredential
 from dionysus.security.passwords import hash_password, verify_password
+
+
+def _has_control_character(value: str) -> bool:
+    return any(unicodedata.category(char).startswith("C") for char in value)
+
+
+def canonicalize_username(username: str) -> str:
+    """Return the stored username form for a login email address."""
+
+    normalized = unicodedata.normalize("NFKC", username)
+    if _has_control_character(normalized):
+        raise ValueError("Invalid username")
+
+    trimmed = normalized.strip()
+    if trimmed.count("@") != 1:
+        raise ValueError("Invalid username")
+
+    local, domain = trimmed.split("@")
+    if not local or not domain:
+        raise ValueError("Invalid username")
+    if any(char.isspace() for char in trimmed) or _has_control_character(trimmed):
+        raise ValueError("Invalid username")
+
+    try:
+        ascii_domain = domain.lower().encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("Invalid username") from exc
+
+    canonical = f"{local}@{ascii_domain}"
+    if len(canonical) > 150:
+        raise ValueError("Invalid username")
+    return canonical
+
+
+def validate_display_name(display_name: str) -> str:
+    """Return the normalized display name."""
+
+    normalized = unicodedata.normalize("NFKC", display_name).strip()
+    if not 1 <= len(normalized) <= 200:
+        raise ValueError("Invalid display name")
+    return normalized
+
+
+def validate_password(password: str) -> str:
+    """Return a password that satisfies the account password policy."""
+
+    if not 15 <= len(password) <= 256 or not password.strip():
+        raise ValueError("Invalid password")
+    return password
 
 
 def create_user(session: Session, *, username: str, display_name: str, password: str) -> User:
@@ -21,8 +72,13 @@ def create_user(session: Session, *, username: str, display_name: str, password:
         password is not stored.
     """
 
-    user = User(username=username, display_name=display_name)
-    user.password_credential = UserPasswordCredential(password_hash=hash_password(password))
+    user = User(
+        username=canonicalize_username(username),
+        display_name=validate_display_name(display_name),
+    )
+    user.password_credential = UserPasswordCredential(
+        password_hash=hash_password(validate_password(password))
+    )
     session.add(user)
     session.flush()
     return user
@@ -39,7 +95,7 @@ def get_user_by_username(session: Session, username: str) -> User | None:
         The matching user, or ``None`` when it does not exist.
     """
 
-    return session.scalar(select(User).where(User.username == username))
+    return session.scalar(select(User).where(User.username == canonicalize_username(username)))
 
 
 def authenticate_user(session: Session, username: str, password: str) -> User | None:
@@ -57,7 +113,10 @@ def authenticate_user(session: Session, username: str, password: str) -> User | 
         The authenticated active user, or ``None`` when authentication fails.
     """
 
-    user = get_user_by_username(session, username)
+    try:
+        user = get_user_by_username(session, username)
+    except ValueError:
+        return None
     if user is None or not user.is_active or user.password_credential is None:
         return None
     if not verify_password(password, user.password_credential.password_hash):
