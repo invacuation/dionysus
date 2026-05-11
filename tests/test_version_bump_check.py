@@ -7,6 +7,7 @@ from dionysus.version_check import (
     VersionCheckError,
     bump_version,
     expected_version_for_title,
+    format_failure_message,
     format_success_message,
     max_version,
     read_project_versions,
@@ -89,7 +90,6 @@ def test_validate_versions_returns_context_for_success_message(tmp_path: Path) -
     assert result.base_version == "0.3.0"
     assert result.bump_level == "minor"
     assert result.expected_version == "0.4.0"
-    assert result.actual_version == "0.4.0"
     assert result.versions == {
         ".VERSION": "0.4.0",
         "pyproject.toml": "0.4.0",
@@ -106,9 +106,9 @@ def test_format_success_message_explains_passed_check(tmp_path: Path) -> None:
             "version check passed:",
             "- PR title 'ci: enforce version checks' requires a patch version bump.",
             "- Base version is 0.3.0; expected version is 0.3.1.",
-            "- .VERSION is 0.3.1.",
-            "- pyproject.toml and frontend/package.json both match .VERSION.",
-            "- This PR can merge without the release workflow pushing a version commit to main.",
+            "- .VERSION has been bumped to 0.3.1.",
+            "- pyproject.toml has been bumped to 0.3.1.",
+            "- frontend/package.json has been bumped to 0.3.1.",
         ]
     )
 
@@ -116,8 +116,26 @@ def test_format_success_message_explains_passed_check(tmp_path: Path) -> None:
 def test_validate_versions_rejects_missing_bump(tmp_path: Path) -> None:
     write_project_versions(tmp_path, "0.3.0")
 
-    with pytest.raises(VersionCheckError, match=escape("Expected version 0.3.1")):
+    with pytest.raises(VersionCheckError, match=escape("expected version is 0.3.1")):
         validate_versions(tmp_path, "fix: handle stale findings", base_version="0.3.0")
+
+
+def test_failure_message_reports_each_file_that_needs_update(tmp_path: Path) -> None:
+    write_project_versions(tmp_path, "0.3.0")
+
+    with pytest.raises(VersionCheckError) as exc_info:
+        validate_versions(tmp_path, "fix: handle stale findings", base_version="0.3.0")
+
+    assert format_failure_message(exc_info.value) == "\n".join(
+        [
+            "version check failed:",
+            "- PR title 'fix: handle stale findings' requires a patch version bump.",
+            "- Base version is 0.3.0; expected version is 0.3.1.",
+            "- .VERSION is 0.3.0; change it to 0.3.1.",
+            "- pyproject.toml is 0.3.0; change it to 0.3.1.",
+            "- frontend/package.json is 0.3.0; change it to 0.3.1.",
+        ]
+    )
 
 
 def test_validate_versions_rejects_mismatched_project_versions(tmp_path: Path) -> None:
@@ -127,5 +145,16 @@ def test_validate_versions_rejects_mismatched_project_versions(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    with pytest.raises(VersionCheckError, match=escape("frontend/package.json")):
+    with pytest.raises(VersionCheckError) as exc_info:
         validate_versions(tmp_path, "fix: handle stale findings", base_version="0.3.0")
+
+    assert format_failure_message(exc_info.value) == "\n".join(
+        [
+            "version check failed:",
+            "- PR title 'fix: handle stale findings' requires a patch version bump.",
+            "- Base version is 0.3.0; expected version is 0.3.1.",
+            "- .VERSION has been bumped to 0.3.1.",
+            "- pyproject.toml has been bumped to 0.3.1.",
+            "- frontend/package.json is 0.3.0; change it to 0.3.1.",
+        ]
+    )

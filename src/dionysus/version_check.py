@@ -18,20 +18,31 @@ TITLE_RE = re.compile(
 )
 
 
-class VersionCheckError(Exception):
-    """Raised when the repository version policy is not satisfied."""
-
-
 @dataclass(frozen=True)
 class VersionCheckResult:
-    """Successful version check context for human-readable CI output."""
+    """Version check context for human-readable CI output."""
 
+    passed: bool
     pr_title: str
     base_version: str
     bump_level: str
     expected_version: str
-    actual_version: str
     versions: dict[str, str]
+
+
+class VersionCheckError(Exception):
+    """Raised when the repository version policy is not satisfied."""
+
+    def __init__(self, message_or_result: str | VersionCheckResult) -> None:
+        self.result = (
+            message_or_result if isinstance(message_or_result, VersionCheckResult) else None
+        )
+        message = (
+            format_failure_message(message_or_result)
+            if isinstance(message_or_result, VersionCheckResult)
+            else message_or_result
+        )
+        super().__init__(message)
 
 
 def parse_version(version: str) -> tuple[int, int, int]:
@@ -140,43 +151,49 @@ def validate_versions(
     expected = bump_version(base, bump_level)
     versions = read_project_versions(root)
 
-    mismatched = {
-        path: version for path, version in versions.items() if version != versions[".VERSION"]
-    }
-    if mismatched:
-        details = ", ".join(f"{path}={version}" for path, version in sorted(mismatched.items()))
-        raise VersionCheckError(
-            "All project version files must match "
-            f".VERSION={versions['.VERSION']}; found {details}."
-        )
-
-    actual = versions[".VERSION"]
-    if actual != expected:
-        raise VersionCheckError(
-            f"Expected version {expected} for PR title {pr_title!r} from base {base}, "
-            f"but .VERSION is {actual}."
-        )
-
-    return VersionCheckResult(
+    result = VersionCheckResult(
+        passed=all(version == expected for version in versions.values()),
         pr_title=pr_title,
         base_version=base,
         bump_level=bump_level,
         expected_version=expected,
-        actual_version=actual,
         versions=versions,
     )
+    if not result.passed:
+        raise VersionCheckError(result)
+    return result
+
+
+def format_version_line(path: str, actual: str, expected: str) -> str:
+    if actual == expected:
+        return f"- {path} has been bumped to {expected}."
+    return f"- {path} is {actual}; change it to {expected}."
+
+
+def format_result_message(result: VersionCheckResult) -> str:
+    status = "passed" if result.passed else "failed"
+    lines = [
+        f"version check {status}:",
+        f"- PR title {result.pr_title!r} requires a "
+        f"{describe_bump_level(result.bump_level)} version bump.",
+        f"- Base version is {result.base_version}; expected version is {result.expected_version}.",
+    ]
+    lines.extend(
+        format_version_line(path, result.versions[path], result.expected_version)
+        for path in [".VERSION", "pyproject.toml", "frontend/package.json"]
+    )
+    return "\n".join(lines)
 
 
 def format_success_message(result: VersionCheckResult) -> str:
-    return "\n".join(
-        [
-            "version check passed:",
-            f"- PR title {result.pr_title!r} requires a "
-            f"{describe_bump_level(result.bump_level)} version bump.",
-            f"- Base version is {result.base_version}; expected version is "
-            f"{result.expected_version}.",
-            f"- .VERSION is {result.actual_version}.",
-            "- pyproject.toml and frontend/package.json both match .VERSION.",
-            "- This PR can merge without the release workflow pushing a version commit to main.",
-        ]
-    )
+    return format_result_message(result)
+
+
+def format_failure_message(error_or_result: VersionCheckError | VersionCheckResult) -> str:
+    if isinstance(error_or_result, VersionCheckError):
+        if error_or_result.result is None:
+            return f"version check failed: {error_or_result}"
+        result = error_or_result.result
+    else:
+        result = error_or_result
+    return format_result_message(result)
