@@ -81,6 +81,22 @@ Run with SQLite (default):
 docker compose up --build
 ```
 
+On first startup with no existing users, Dionysus bootstraps the initial admin
+from environment variables. `DIONYSUS_BOOTSTRAP_ADMIN_USERNAME` must be an email
+address, `DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD` must be at least 15 characters, and
+`DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME` is optional. Docker Compose provides
+local-only defaults:
+
+```bash
+DIONYSUS_BOOTSTRAP_ADMIN_USERNAME=admin@example.local
+DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD=change-me-now-please
+DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME="Local Admin"
+```
+
+Real deployments must override those values before the first startup. After the
+first user exists, remove the bootstrap variables from the runtime environment;
+the app will warn when they remain configured, but it will not fail startup.
+
 Run with bundled PostgreSQL:
 
 ```bash
