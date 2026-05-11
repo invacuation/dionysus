@@ -5,6 +5,8 @@ from enum import StrEnum
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_MAX_REPORT_UPLOAD_BYTES = 25 * 1024 * 1024
+
 
 class Environment(StrEnum):
     """Supported runtime environments for the application."""
@@ -34,4 +36,4 @@ class AppSettings(BaseSettings):
     bootstrap_admin_display_name: str | None = None
     raw_report_storage_backend: str = "none"
     raw_report_retention_days: int = Field(default=0, ge=0)
-    max_report_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1)
+    max_report_upload_bytes: int = Field(default=DEFAULT_MAX_REPORT_UPLOAD_BYTES, ge=1)
