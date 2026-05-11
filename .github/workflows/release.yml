@@ -4,10 +4,12 @@ on:
   push:
     branches: [main]
 
+permissions: read-all
+
 jobs:
   release:
     name: semantic release and version sync
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.repository == 'invacuation/dionysus'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -18,6 +20,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: set up node
         # actions/setup-node@v4
