@@ -68,17 +68,34 @@ bun run e2e:headed
 
 ## Docker
 
-Build and run the full stack (API + React frontend + PostgreSQL):
+The compose setup supports two database options:
+
+1. **SQLite (default)** — no external SQL service required, stores data in `./var` on
+   your local filesystem.
+2. **PostgreSQL** — either the bundled `db` service or a pre-existing PostgreSQL
+   instance via `DIONYSUS_DATABASE_URL`.
+
+Run with SQLite (default):
 
 ```bash
 docker compose up --build
 ```
 
-The app is available at `http://127.0.0.1:8000`.
+Run with bundled PostgreSQL:
 
-Set `DIONYSUS_DATABASE_URL` on the `app` service in `docker-compose.yml` if you
-want to point to a managed cloud database instead of the bundled PostgreSQL
-container.
+```bash
+DIONYSUS_DATABASE_URL=postgresql+psycopg://dionysus:dionysus@db:5432/dionysus \
+  docker compose --profile postgres up --build
+```
+
+Run with an existing PostgreSQL database:
+
+```bash
+DIONYSUS_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME \
+  docker compose up --build
+```
+
+The app is available at `http://127.0.0.1:8000`.
 
 ## Quality Gate
 
