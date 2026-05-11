@@ -1,6 +1,7 @@
 """User account creation and password authentication services."""
 
 import unicodedata
+from string import ascii_letters, digits
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,35 +9,45 @@ from sqlalchemy.orm import Session
 from dionysus.models.identity import User, UserPasswordCredential
 from dionysus.security.passwords import hash_password, verify_password
 
+_USERNAME_CHARS = frozenset(ascii_letters + digits + ".!#$%&'*+/=?^_`{|}~-")
+_DOMAIN_CHARS = frozenset(ascii_letters + digits + ".-")
+
 
 def _has_control_character(value: str) -> bool:
     return any(unicodedata.category(char).startswith("C") for char in value)
 
 
 def canonicalize_username(username: str) -> str:
-    """Return the stored username form for a login email address."""
+    """Return the stored username form for a login identifier."""
 
-    normalized = unicodedata.normalize("NFKC", username)
-    if _has_control_character(normalized):
-        raise ValueError("Invalid username")
-
-    trimmed = normalized.strip()
-    if trimmed.count("@") != 1:
-        raise ValueError("Invalid username")
-
-    local, domain = trimmed.split("@")
-    if not local or not domain:
-        raise ValueError("Invalid username")
+    trimmed = unicodedata.normalize("NFKC", username).strip()
     if any(char.isspace() for char in trimmed) or _has_control_character(trimmed):
         raise ValueError("Invalid username")
 
-    try:
-        ascii_domain = domain.lower().encode("idna").decode("ascii")
-    except UnicodeError as exc:
-        raise ValueError("Invalid username") from exc
+    at_count = trimmed.count("@")
+    if at_count > 1:
+        raise ValueError("Invalid username")
 
-    canonical = f"{local}@{ascii_domain}"
-    if len(canonical) > 150:
+    if at_count == 0:
+        canonical = trimmed
+        if any(char not in _USERNAME_CHARS for char in canonical):
+            raise ValueError("Invalid username")
+    else:
+        local, domain = trimmed.split("@")
+        if not local or not domain:
+            raise ValueError("Invalid username")
+        if any(char not in _USERNAME_CHARS for char in local):
+            raise ValueError("Invalid username")
+
+        try:
+            ascii_domain = domain.lower().encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("Invalid username") from exc
+        if any(char not in _DOMAIN_CHARS for char in ascii_domain):
+            raise ValueError("Invalid username")
+        canonical = f"{local}@{ascii_domain}"
+
+    if not 3 <= len(canonical) <= 150:
         raise ValueError("Invalid username")
     return canonical
 

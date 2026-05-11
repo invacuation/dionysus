@@ -82,13 +82,13 @@ docker compose up --build
 ```
 
 On first startup with no existing users, Dionysus bootstraps the initial admin
-from environment variables. `DIONYSUS_BOOTSTRAP_ADMIN_USERNAME` must be an email
-address, `DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD` must be at least 15 characters, and
+from environment variables. `DIONYSUS_BOOTSTRAP_ADMIN_USERNAME` must be a login
+identifier, `DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD` must be at least 15 characters, and
 `DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME` is optional. Docker Compose provides
 local-only defaults:
 
 ```bash
-DIONYSUS_BOOTSTRAP_ADMIN_USERNAME=admin@example.local
+DIONYSUS_BOOTSTRAP_ADMIN_USERNAME=admin
 DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD=change-me-now-please
 DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME="Local Admin"
 ```

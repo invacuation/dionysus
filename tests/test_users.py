@@ -1,7 +1,12 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from dionysus.identity.users import authenticate_user, create_user, get_user_by_username
+from dionysus.identity.users import (
+    authenticate_user,
+    canonicalize_username,
+    create_user,
+    get_user_by_username,
+)
 from dionysus.models.identity import User
 
 
@@ -64,15 +69,24 @@ def test_canonicalize_username_accepts_unicode_email_domain(db_session: Session)
     assert get_user_by_username(db_session, "Alice@bücher.example") == user
 
 
+def test_canonicalize_username_accepts_plain_identifier() -> None:
+    assert canonicalize_username("admin") == "admin"
+
+
+def test_canonicalize_username_trims_surrounding_whitespace() -> None:
+    assert canonicalize_username("  alice@example.com\n") == "alice@example.com"
+
+
 @pytest.mark.parametrize(
     "username",
     [
         "",
-        "alice",
         "alice@",
         "@example.com",
+        "alice@@example.com",
         "alice example@example.com",
-        "alice@example.com\n",
+        "alice@example.com\nadmin",
+        "alice\tadmin",
     ],
 )
 def test_create_user_rejects_malformed_usernames(db_session: Session, username: str) -> None:
@@ -94,7 +108,10 @@ def test_authenticate_user_returns_none_for_malformed_username(db_session: Sessi
     )
     db_session.commit()
 
-    assert authenticate_user(db_session, "alice", "correct horse battery staple") is None
+    assert (
+        authenticate_user(db_session, "alice@@example.com", "correct horse battery staple")
+        is None
+    )
 
 
 def test_create_user_rejects_overlong_canonical_username(db_session: Session) -> None:
