@@ -7,8 +7,8 @@ Security scan triage web application.
 Use Python 3.13 with `uv`. Use Node 22.12.0 from `.nvmrc` / `.node-version`, and run
 frontend package scripts with Bun.
 
-The canonical project version lives in `.dionysus-version`. After changing it, run
-`uv run python -m scripts.sync_version` to update generated package metadata.
+Releases are managed by release-please. Regular feature PRs should not edit version files;
+release-please opens dedicated release PRs with the package metadata and changelog updates.
 
 Install Python dependencies:
 

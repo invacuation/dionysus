@@ -4,7 +4,6 @@ FROM oven/bun:1.2.23-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
-COPY .dionysus-version /app/.dionysus-version
 COPY frontend/ ./
 RUN bun run build
 
@@ -24,8 +23,8 @@ WORKDIR /app
 RUN apk add --no-cache libpq
 
 COPY --from=backend-build /app/.venv /app/.venv
+COPY pyproject.toml ./
 COPY src/ ./src/
-COPY .dionysus-version ./
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist

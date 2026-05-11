@@ -1,10 +1,12 @@
-import path from "node:path"
 import { readFileSync } from "node:fs"
+import path from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-const appVersion = readFileSync(new URL("../.dionysus-version", import.meta.url), "utf8").trim()
+const appVersion = JSON.parse(
+  readFileSync(new URL("package.json", import.meta.url), "utf8"),
+).version
 
 export default defineConfig({
   define: {

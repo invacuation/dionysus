@@ -26,25 +26,6 @@ jobs:
             exit 1
           fi
 
-  version-bump:
-    name: version bump
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      # actions/checkout@v4
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: fetch main and tags
-        run: git fetch --force --tags origin main:refs/remotes/origin/main
-
-      - name: validate version bump
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: PYTHONPATH=src python3 scripts/check_version_bump.py --pr-title "$PR_TITLE"
-
   backend-quality:
     name: backend quality
     runs-on: ubuntu-latest
