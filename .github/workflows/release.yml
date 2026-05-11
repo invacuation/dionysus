@@ -4,10 +4,13 @@ on:
   push:
     branches: [main]
 
+permissions: read-all
+
 jobs:
   release:
     name: semantic release and version sync
-    if: github.actor != 'github-actions[bot]'
+    # Canonical-repo guard prevents this write-enabled job from running in forks.
+    if: github.actor != 'github-actions[bot]' && github.repository == 'invacuation/dionysus'
     runs-on: ubuntu-latest
     permissions:
       contents: write
