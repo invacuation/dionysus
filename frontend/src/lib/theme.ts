@@ -8,6 +8,8 @@ export type ResolvedThemeMode = Exclude<ThemeMode, "system">
 type ThemeModeReader = Pick<Storage, "getItem">
 type ThemeModeWriter = Pick<Storage, "setItem">
 type ThemeModeStorage = ThemeModeReader & ThemeModeWriter
+type SystemThemeMediaQuery = Pick<MediaQueryList, "matches"> &
+  Partial<Pick<MediaQueryList, "addEventListener" | "removeEventListener" | "addListener" | "removeListener">>
 
 export function isThemeMode(value: string | null): value is ThemeMode {
   return value === "light" || value === "dark" || value === "system"
@@ -65,4 +67,21 @@ export function applyThemeMode(
   } else {
     root.classList.remove("dark")
   }
+}
+
+export function observeSystemTheme(
+  mediaQuery: SystemThemeMediaQuery,
+  onChange: (systemPrefersDark: boolean) => void,
+): () => void {
+  const handleChange = () => onChange(mediaQuery.matches)
+
+  handleChange()
+
+  if (mediaQuery.addEventListener && mediaQuery.removeEventListener) {
+    mediaQuery.addEventListener("change", handleChange)
+    return () => mediaQuery.removeEventListener?.("change", handleChange)
+  }
+
+  mediaQuery.addListener?.(handleChange)
+  return () => mediaQuery.removeListener?.(handleChange)
 }

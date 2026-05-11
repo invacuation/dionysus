@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   applyThemeMode,
   loadThemeMode,
+  observeSystemTheme,
   resolveThemeMode,
   safeThemeModeStorage,
   storeThemeMode,
@@ -79,5 +80,34 @@ describe("theme mode resolution", () => {
 
     applyThemeMode(root, "dark")
     expect(root.classList.contains("dark")).toBe(true)
+  })
+
+  test("observes system theme changes through legacy media query listeners", () => {
+    let listener: (() => void) | undefined
+    const changes: boolean[] = []
+    const mediaQuery = {
+      matches: false,
+      addListener(callback: () => void) {
+        listener = callback
+      },
+      removeListener(callback: () => void) {
+        if (listener === callback) {
+          listener = undefined
+        }
+      },
+    }
+
+    const stopObserving = observeSystemTheme(mediaQuery, (matches) => changes.push(matches))
+
+    expect(changes).toEqual([false])
+
+    mediaQuery.matches = true
+    listener?.()
+
+    expect(changes).toEqual([false, true])
+
+    stopObserving()
+
+    expect(listener).toBeUndefined()
   })
 })

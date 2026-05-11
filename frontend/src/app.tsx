@@ -13,6 +13,7 @@ import { ApiError, getCurrentActor, login, logout } from "@/lib/api"
 import {
   applyThemeMode,
   loadThemeMode,
+  observeSystemTheme,
   resolveThemeMode,
   safeThemeModeStorage,
   storeThemeMode,
@@ -61,11 +62,7 @@ export function App() {
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleChange = () => setSystemPrefersDark(mediaQuery.matches)
-
-    handleChange()
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
+    return observeSystemTheme(mediaQuery, setSystemPrefersDark)
   }, [])
 
   useLayoutEffect(() => {
