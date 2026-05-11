@@ -2,8 +2,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from dionysus.app import create_app
-from dionysus.config import AppSettings, Environment
+from conftest import create_prepared_test_app
 from dionysus.identity.machines import create_machine_credential, exchange_machine_client_secret
 from dionysus.identity.permissions import assign_permission
 from dionysus.identity.users import create_user
@@ -23,15 +22,9 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
-    app = create_app(
-        AppSettings(
-            environment=Environment.TEST,
-            database_url="sqlite:///:memory:",
-            bootstrap_admin_username="admin",
-            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
-            machine_access_token_expires_minutes=15,
-            machine_refresh_token_expires_minutes=60,
-        )
+    app = create_prepared_test_app(
+        machine_access_token_expires_minutes=15,
+        machine_refresh_token_expires_minutes=60,
     )
     app.state.session_factory = session_factory
     return TestClient(app)

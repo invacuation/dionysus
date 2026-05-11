@@ -21,17 +21,11 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 def _client_with_session_factory(
     session_factory: sessionmaker[Session],
+    settings: AppSettings,
     *,
     environment: Environment = Environment.TEST,
 ) -> TestClient:
-    app = create_app(
-        AppSettings(
-            environment=environment,
-            database_url="sqlite:///:memory:",
-            bootstrap_admin_username="admin",
-            bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
-        )
-    )
+    app = create_app(settings.model_copy(update={"environment": environment}))
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -80,12 +74,15 @@ def _assert_no_token_material(body: dict[str, object]) -> None:
     assert all("token" not in str(value) for value in body.values())
 
 
-def test_api_login_success_sets_session_cookie_without_returning_token(engine: Engine) -> None:
+def test_api_login_success_sets_session_cookie_without_returning_token(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         user_id = _create_user(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.post(
             "/api/auth/session",
@@ -114,6 +111,7 @@ def test_api_login_success_sets_session_cookie_without_returning_token(engine: E
 
 def test_api_login_uses_configured_security_settings_session_timeouts(
     engine: Engine,
+    prepared_app_settings: AppSettings,
 ) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
@@ -128,7 +126,7 @@ def test_api_login_uses_configured_security_settings_session_timeouts(
                 )
             )
             session.commit()
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.post(
             "/api/auth/session",
@@ -142,12 +140,15 @@ def test_api_login_uses_configured_security_settings_session_timeouts(
     assert abs((session_record.expires_at - session_record.created_at).total_seconds() - 2520) < 1
 
 
-def test_api_login_rejects_invalid_credentials_with_generic_401(engine: Engine) -> None:
+def test_api_login_rejects_invalid_credentials_with_generic_401(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         _create_user(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.post(
             "/api/auth/session",
@@ -165,12 +166,15 @@ def test_api_login_rejects_invalid_credentials_with_generic_401(engine: Engine) 
             assert event.metadata_json == {"username": "alice"}
 
 
-def test_api_login_rejects_form_body(engine: Engine) -> None:
+def test_api_login_rejects_form_body(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         _create_user(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.post(
             "/api/auth/session",
@@ -180,12 +184,15 @@ def test_api_login_rejects_form_body(engine: Engine) -> None:
     assert response.status_code == 422
 
 
-def test_api_me_returns_session_authenticated_actor(engine: Engine) -> None:
+def test_api_me_returns_session_authenticated_actor(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         user_id = _create_user(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
         login_response = client.post(
             "/api/auth/session",
             json={"username": "alice", "password": "correct horse battery staple"},
@@ -210,12 +217,15 @@ def test_api_me_returns_session_authenticated_actor(engine: Engine) -> None:
     }
 
 
-def test_api_me_returns_bearer_authenticated_actor(engine: Engine) -> None:
+def test_api_me_returns_bearer_authenticated_actor(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         machine_id, access_token = _create_machine_access_token(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
 
         response = client.get(
             "/api/auth/me",
@@ -237,13 +247,16 @@ def test_api_me_returns_bearer_authenticated_actor(engine: Engine) -> None:
     assert body["session_cookie_present"] is False
 
 
-def test_api_me_uses_bearer_when_both_credentials_are_present(engine: Engine) -> None:
+def test_api_me_uses_bearer_when_both_credentials_are_present(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         _create_user(session_factory)
         machine_id, access_token = _create_machine_access_token(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
         login_response = client.post(
             "/api/auth/session",
             json={"username": "alice", "password": "correct horse battery staple"},
@@ -264,12 +277,15 @@ def test_api_me_uses_bearer_when_both_credentials_are_present(engine: Engine) ->
     assert body["session_cookie_present"] is True
 
 
-def test_api_logout_revokes_browser_session_and_clears_cookie(engine: Engine) -> None:
+def test_api_logout_revokes_browser_session_and_clears_cookie(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         _create_user(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
         login_response = client.post(
             "/api/auth/session",
             json={"username": "alice", "password": "correct horse battery staple"},
@@ -294,13 +310,16 @@ def test_api_logout_revokes_browser_session_and_clears_cookie(engine: Engine) ->
             assert events[0].metadata_json == {"username": "alice"}
 
 
-def test_api_logout_does_not_revoke_bearer_when_bearer_wins(engine: Engine) -> None:
+def test_api_logout_does_not_revoke_bearer_when_bearer_wins(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)
         session_factory = _session_factory_for_connection(connection)
         _create_user(session_factory)
         _machine_id, access_token = _create_machine_access_token(session_factory)
-        client = _client_with_session_factory(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
         login_response = client.post(
             "/api/auth/session",
             json={"username": "alice", "password": "correct horse battery staple"},

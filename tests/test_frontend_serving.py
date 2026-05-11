@@ -8,8 +8,9 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import Engine
 
+from conftest import make_prepared_app_settings
 from dionysus.app import create_app
-from dionysus.config import AppSettings, Environment
+from dionysus.config import AppSettings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
@@ -61,13 +62,8 @@ def _bun_bin() -> Path:
     pytest.skip("frontend build requires Bun")
 
 
-def _test_settings() -> AppSettings:
-    return AppSettings(
-        environment=Environment.TEST,
-        database_url="sqlite:///:memory:",
-        bootstrap_admin_username="admin",
-        bootstrap_admin_password="change-me-now-please",  # noqa: S106 - test fixture password
-    )
+def _test_settings(tmp_path: Path) -> AppSettings:
+    return make_prepared_app_settings(tmp_path)
 
 
 def test_react_frontend_serves_index_at_root_when_build_exists(tmp_path: Path) -> None:
@@ -78,7 +74,7 @@ def test_react_frontend_serves_index_at_root_when_build_exists(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app)
 
@@ -96,7 +92,7 @@ def test_react_frontend_falls_back_to_index_for_frontend_routes(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app)
 
@@ -118,7 +114,7 @@ def test_react_frontend_serves_index_for_known_frontend_routes(
         encoding="utf-8",
     )
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app)
 
@@ -134,7 +130,7 @@ def test_app_route_returns_404(tmp_path: Path) -> None:
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app, follow_redirects=False)
 
@@ -158,7 +154,7 @@ def test_app_route_nested_paths_return_404(
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app, follow_redirects=False)
 
@@ -168,7 +164,7 @@ def test_app_route_nested_paths_return_404(
 
 
 def test_react_frontend_missing_build_returns_404(tmp_path: Path) -> None:
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = tmp_path / "missing"
     client = TestClient(app)
 
@@ -190,7 +186,7 @@ def test_built_frontend_assets_are_mounted_when_build_exists(
     (assets_dir / "app.js").write_text("console.log('dionysus')", encoding="utf-8")
     monkeypatch.setattr("dionysus.app.default_frontend_dist", lambda: frontend_dist, raising=False)
 
-    client = TestClient(create_app(_test_settings()))
+    client = TestClient(create_app(_test_settings(tmp_path)))
 
     response = client.get("/assets/app.js")
 
@@ -253,9 +249,13 @@ def test_vite_build_outputs_index_html_contract(tmp_path: Path) -> None:
         "/projects/not-a-real",
     ],
 )
-def test_legacy_jinja_routes_are_not_registered(path: str, engine: Engine) -> None:
+def test_legacy_jinja_routes_are_not_registered(
+    path: str,
+    engine: Engine,
+    tmp_path: Path,
+) -> None:
     with engine.connect():
-        client = TestClient(create_app(_test_settings()))
+        client = TestClient(create_app(_test_settings(tmp_path)))
         response = client.get(path)
 
     assert response.status_code == 404
@@ -266,7 +266,7 @@ def test_frontend_fallback_does_not_swallow_backend_prefixes(tmp_path: Path) -> 
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
 
-    app = create_app(_test_settings())
+    app = create_app(_test_settings(tmp_path))
     app.state.frontend_dist = frontend_dist
     client = TestClient(app)
 

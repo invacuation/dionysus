@@ -19,26 +19,17 @@ FIXTURE = Path(__file__).parent / "fixtures" / "trivy-image.json"
 BOOTSTRAP_PASSWORD = "change-me-now-please"  # noqa: S105 - test fixture password
 
 
-def _bootstrap_test_settings() -> AppSettings:
-    return AppSettings(
-        environment=Environment.TEST,
-        database_url="sqlite:///:memory:",
-        bootstrap_admin_username="admin",
-        bootstrap_admin_password=BOOTSTRAP_PASSWORD,
-    )
-
-
-def _client_with_frontend_dist(tmp_path: Path) -> TestClient:
+def _client_with_frontend_dist(tmp_path: Path, settings: AppSettings) -> TestClient:
     frontend_dist = tmp_path / "dist"
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
-    app = create_app(_bootstrap_test_settings())
+    app = create_app(settings)
     app.state.frontend_dist = frontend_dist
     return TestClient(app)
 
 
-def test_health_endpoint_returns_ok() -> None:
-    client = TestClient(create_app(_bootstrap_test_settings()))
+def test_health_endpoint_returns_ok(prepared_app_settings: AppSettings) -> None:
+    client = TestClient(create_app(prepared_app_settings))
 
     response = client.get("/healthz")
 
@@ -46,8 +37,8 @@ def test_health_endpoint_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_create_app_bootstraps_admin_from_settings() -> None:
-    app = create_app(_bootstrap_test_settings())
+def test_create_app_bootstraps_admin_from_settings(prepared_app_settings: AppSettings) -> None:
+    app = create_app(prepared_app_settings)
 
     with app.state.session_factory() as session:
         user = authenticate_user(session, "admin", BOOTSTRAP_PASSWORD)
@@ -56,13 +47,34 @@ def test_create_app_bootstraps_admin_from_settings() -> None:
     assert user.username == "admin"
 
 
-def test_create_app_requires_bootstrap_username_and_password() -> None:
-    settings = AppSettings(environment=Environment.TEST, database_url="sqlite:///:memory:")
+def test_create_app_requires_bootstrap_username_and_password(
+    prepared_app_settings: AppSettings,
+) -> None:
+    settings = prepared_app_settings.model_copy(
+        update={"bootstrap_admin_username": None, "bootstrap_admin_password": None}
+    )
 
     with pytest.raises(BootstrapAdminError) as exc_info:
         create_app(settings)
 
     assert "username and password are required" in str(exc_info.value)
+
+
+def test_create_app_reports_schema_not_ready_when_bootstrap_schema_is_missing() -> None:
+    settings = AppSettings(
+        environment=Environment.TEST,
+        database_url="sqlite:///:memory:",
+        bootstrap_admin_username="admin",
+        bootstrap_admin_password=BOOTSTRAP_PASSWORD,
+    )
+
+    with pytest.raises(BootstrapAdminError) as exc_info:
+        create_app(settings)
+
+    assert str(exc_info.value) == (
+        "startup bootstrap failed: database schema is not up to date; "
+        "run migrations and retry"
+    )
 
 
 def test_estate_overview_excludes_sla_reporting_opt_out_from_sla_counts(
@@ -112,8 +124,11 @@ def test_estate_overview_excludes_sla_reporting_opt_out_from_sla_counts(
     assert overview.highest_risk_projects[0].overdue_count == 0
 
 
-def test_imports_route_serves_react_frontend(tmp_path: Path) -> None:
-    client = _client_with_frontend_dist(tmp_path)
+def test_imports_route_serves_react_frontend(
+    tmp_path: Path,
+    prepared_app_settings: AppSettings,
+) -> None:
+    client = _client_with_frontend_dist(tmp_path, prepared_app_settings)
 
     response = client.get("/imports")
 
@@ -121,8 +136,11 @@ def test_imports_route_serves_react_frontend(tmp_path: Path) -> None:
     assert '<div id="root"></div>' in response.text
 
 
-def test_admin_route_serves_react_frontend(tmp_path: Path) -> None:
-    client = _client_with_frontend_dist(tmp_path)
+def test_admin_route_serves_react_frontend(
+    tmp_path: Path,
+    prepared_app_settings: AppSettings,
+) -> None:
+    client = _client_with_frontend_dist(tmp_path, prepared_app_settings)
 
     response = client.get("/admin")
 
