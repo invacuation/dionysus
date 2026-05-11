@@ -3,6 +3,7 @@
 import logging
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from dionysus.config import AppSettings
@@ -33,7 +34,6 @@ def bootstrap_admin_user(
     username: str,
     display_name: str,
     password: str,
-    allow_existing: bool = False,
 ) -> User:
     """Create an administrator user for a fresh installation.
 
@@ -50,7 +50,6 @@ def bootstrap_admin_user(
         BootstrapAdminError: If users already exist.
     """
 
-    del allow_existing
     if _users_exist(session):
         msg = "users already exist; bootstrap admin is only allowed before user creation"
         raise BootstrapAdminError(msg)
@@ -100,12 +99,22 @@ def bootstrap_admin_from_settings(session: Session, settings: AppSettings) -> Us
         raise BootstrapAdminError(msg)
 
     display_name = settings.bootstrap_admin_display_name or settings.bootstrap_admin_username
-    return bootstrap_admin_user(
-        session,
-        username=settings.bootstrap_admin_username,
-        display_name=display_name,
-        password=settings.bootstrap_admin_password,
-    )
+    try:
+        with session.begin_nested():
+            return bootstrap_admin_user(
+                session,
+                username=settings.bootstrap_admin_username,
+                display_name=display_name,
+                password=settings.bootstrap_admin_password,
+            )
+    except IntegrityError as exc:
+        if _users_exist(session):
+            logger.warning(
+                "bootstrap admin environment variables are set but users already exist"
+            )
+            return None
+        msg = "bootstrap admin could not be created"
+        raise BootstrapAdminError(msg) from exc
 
 
 def _users_exist(session: Session) -> bool:

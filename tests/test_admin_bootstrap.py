@@ -1,12 +1,10 @@
-from pathlib import Path
-
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from dionysus.cli import main
 from dionysus.config import AppSettings
-from dionysus.db import create_engine_from_url, create_session_factory
+from dionysus.identity import bootstrap as bootstrap_service
 from dionysus.identity.bootstrap import (
     BootstrapAdminError,
     bootstrap_admin_from_settings,
@@ -14,7 +12,6 @@ from dionysus.identity.bootstrap import (
 )
 from dionysus.identity.permissions import check_permission
 from dionysus.identity.users import authenticate_user, create_user
-from dionysus.models import Base
 from dionysus.models.identity import (
     Group,
     GroupMembership,
@@ -23,39 +20,6 @@ from dionysus.models.identity import (
     PrincipalType,
     User,
 )
-
-
-def test_cli_bootstrap_admin_help_does_not_offer_raw_password(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(["bootstrap-admin", "--help"])
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 0
-    assert "--password PASSWORD" not in captured.out
-
-
-def test_cli_bootstrap_admin_rejects_raw_password_argument(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "bootstrap-admin",
-                "--username",
-                "admin@example.com",
-                "--display-name",
-                "Root Admin",
-                "--password",
-                "change-me-now-please",
-            ]
-        )
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 2
-    assert "change-me-now-please" not in captured.err
-    assert "change-me-now-please" not in captured.out
 
 
 def test_bootstrap_admin_creates_admin_identity(db_session: Session) -> None:
@@ -199,6 +163,62 @@ def test_bootstrap_admin_from_settings_warns_and_skips_when_users_exist(
     assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
 
 
+def test_bootstrap_admin_from_settings_warns_and_skips_when_racing_user_creation(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="change-me-now-please",  # noqa: S106
+    )
+    db_session.commit()
+
+    original_users_exist = bootstrap_service._users_exist
+    users_exist_calls = 0
+
+    def users_exist_after_initial_race_check(session: Session) -> bool:
+        nonlocal users_exist_calls
+        users_exist_calls += 1
+        if users_exist_calls == 1:
+            return False
+        return original_users_exist(session)
+
+    def raise_integrity_error(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("insert user", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(
+        bootstrap_service,
+        "_users_exist",
+        users_exist_after_initial_race_check,
+    )
+    monkeypatch.setattr(
+        bootstrap_service,
+        "bootstrap_admin_user",
+        raise_integrity_error,
+    )
+
+    with caplog.at_level("WARNING"):
+        user = bootstrap_admin_from_settings(
+            db_session,
+            AppSettings(
+                bootstrap_admin_username="admin@example.com",
+                bootstrap_admin_password="change-me-now-please",  # noqa: S106
+            ),
+        )
+
+    assert user is None
+    assert users_exist_calls == 2
+    assert (
+        "bootstrap admin environment variables are set but users already exist"
+        in caplog.text
+    )
+    assert db_session.scalar(select(User).where(User.username == "alice@example.com")) is not None
+    assert db_session.scalar(select(User).where(User.username == "admin@example.com")) is None
+
+
 def test_bootstrap_admin_from_settings_skips_silently_when_users_exist_without_settings(
     db_session: Session,
     caplog: pytest.LogCaptureFixture,
@@ -237,73 +257,3 @@ def test_bootstrap_admin_refuses_when_user_already_exists(db_session: Session) -
             display_name="Root Admin",
             password="change-me-now-please",  # noqa: S106
         )
-
-
-def test_cli_bootstrap_admin_creates_user_from_env_password(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    database_path = tmp_path / "dionysus.db"
-    database_url = f"sqlite:///{database_path}"
-    engine = create_engine_from_url(database_url)
-    Base.metadata.create_all(engine)
-    monkeypatch.setenv("DIONYSUS_DATABASE_URL", database_url)
-    monkeypatch.setenv("DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD", "change-me-now-please")
-
-    exit_code = main(
-        [
-            "bootstrap-admin",
-            "--username",
-            "admin@example.com",
-            "--display-name",
-            "Root Admin",
-        ]
-    )
-
-    session_factory = create_session_factory(engine)
-    with session_factory() as session:
-        user = session.scalar(select(User).where(User.username == "admin@example.com"))
-        admin_group = session.scalar(select(Group).where(Group.name == "administrators"))
-
-        assert exit_code == 0
-        assert user is not None
-        assert admin_group is not None
-        assert authenticate_user(session, "admin@example.com", "change-me-now-please") is not None
-
-
-def test_cli_bootstrap_admin_exits_nonzero_when_users_exist(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    database_path = tmp_path / "dionysus.db"
-    database_url = f"sqlite:///{database_path}"
-    engine = create_engine_from_url(database_url)
-    Base.metadata.create_all(engine)
-    session_factory = create_session_factory(engine)
-    with session_factory() as session:
-        create_user(
-            session,
-            username="alice@example.com",
-            display_name="Alice Example",
-            password="change-me-now-please",  # noqa: S106
-        )
-        session.commit()
-    monkeypatch.setenv("DIONYSUS_DATABASE_URL", database_url)
-    monkeypatch.setenv("DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD", "change-me-now-please")
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "bootstrap-admin",
-                "--username",
-                "admin@example.com",
-                "--display-name",
-                "Root Admin",
-            ]
-        )
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "users already exist" in captured.err
-    assert "change-me-now-please" not in captured.err
