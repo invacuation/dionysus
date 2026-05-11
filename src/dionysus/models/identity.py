@@ -33,15 +33,6 @@ class PermissionEffect(StrEnum):
     DENY = "deny"
 
 
-class BootstrapLock(TimestampMixin, Base):
-    """A database-backed sentinel claiming one-time bootstrap work."""
-
-    __tablename__ = "bootstrap_locks"
-
-    id: Mapped[UUIDPrimaryKey]
-    name: Mapped[str] = mapped_column(String(150), unique=True, index=True)
-
-
 class User(TimestampMixin, Base):
     """A human account that can sign in and receive permissions."""
 

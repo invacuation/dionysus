@@ -15,9 +15,6 @@ dependencies = [
     "uvicorn[standard]>=0.30.6",
 ]
 
-[project.scripts]
-dionysus-admin = "dionysus.cli:main"
-
 [dependency-groups]
 dev = [
     "httpx>=0.27.2",
