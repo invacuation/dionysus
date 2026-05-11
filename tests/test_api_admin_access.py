@@ -48,7 +48,7 @@ def _create_user(
             session,
             username=username,
             display_name=username.title(),
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         if permission is not None:
             assign_permission(
@@ -67,7 +67,7 @@ def _create_user(
 def _login(client: TestClient, *, username: str = "alice") -> None:
     response = client.post(
         "/api/auth/session",
-        json={"username": username, "password": "password"},
+        json={"username": username, "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
 

@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from dionysus.identity.sessions import create_session, get_active_session, revoke_session
 from dionysus.identity.users import create_user
 
+TEST_PASSWORD = "correct horse battery staple"  # noqa: S105
+
 
 def test_create_session_returns_raw_token_once(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, session_record = create_session(
         db_session,
         user=user,
@@ -27,7 +29,7 @@ def test_create_session_returns_raw_token_once(db_session: Session) -> None:
 
 
 def test_get_active_session_touches_idle_expiry(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, session_record = create_session(
         db_session,
         user=user,
@@ -52,7 +54,7 @@ def test_get_active_session_touches_idle_expiry(db_session: Session) -> None:
 
 
 def test_get_active_session_rejects_revoked_session(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, session_record = create_session(
         db_session,
         user=user,
@@ -77,7 +79,7 @@ def test_get_active_session_rejects_revoked_session(db_session: Session) -> None
 
 
 def test_get_active_session_rejects_idle_timeout(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, _ = create_session(
         db_session,
         user=user,
@@ -103,7 +105,7 @@ def test_get_active_session_rejects_idle_timeout(db_session: Session) -> None:
 def test_get_active_session_accepts_sqlite_reloaded_naive_timestamps(
     engine: Engine, db_session: Session
 ) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, session_record = create_session(
         db_session,
         user=user,
@@ -130,7 +132,7 @@ def test_get_active_session_accepts_sqlite_reloaded_naive_timestamps(
 
 
 def test_get_active_session_clamps_idle_expiry_to_absolute_expiry(db_session: Session) -> None:
-    user = create_user(db_session, username="alice", display_name="Alice", password="password")  # noqa: S106
+    user = create_user(db_session, username="alice", display_name="Alice", password=TEST_PASSWORD)
     token, session_record = create_session(
         db_session,
         user=user,

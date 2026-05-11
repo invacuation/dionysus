@@ -30,7 +30,7 @@ def test_admin_wildcard_allows_specific_admin_permission(db_session: Session) ->
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     assign_permission(
         db_session,
@@ -59,7 +59,7 @@ def test_specific_scoped_deny_overrides_admin_wildcard(db_session: Session) -> N
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     assign_permission(
         db_session,
@@ -99,7 +99,7 @@ def test_missing_permission_grant_is_forbidden(db_session: Session) -> None:
         db_session,
         username="alice",
         display_name="Alice",
-        password="password",  # noqa: S106
+        password="correct horse battery staple",  # noqa: S106
     )
     db_session.commit()
 

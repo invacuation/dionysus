@@ -66,7 +66,7 @@ def _create_user(session_factory: sessionmaker[Session]) -> str:
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         session.commit()
         return user.id
@@ -133,7 +133,7 @@ def _grant_permission(
 def _login(client: TestClient) -> None:
     response = client.post(
         "/api/auth/session",
-        json={"username": "alice", "password": "password"},
+        json={"username": "alice", "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
 

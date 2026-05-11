@@ -35,7 +35,7 @@ def _create_user(session_factory: sessionmaker[Session]) -> str:
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         session.commit()
         return user.id
@@ -82,7 +82,7 @@ def test_api_login_success_sets_session_cookie_without_returning_token(engine: E
 
         response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
 
     assert response.status_code == 200
@@ -125,7 +125,7 @@ def test_api_login_uses_configured_security_settings_session_timeouts(
 
         response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
         with session_factory() as session:
             session_record = session.scalars(select(UserSession)).one()
@@ -167,7 +167,7 @@ def test_api_login_rejects_form_body(engine: Engine) -> None:
 
         response = client.post(
             "/api/auth/session",
-            data={"username": "alice", "password": "password"},
+            data={"username": "alice", "password": "correct horse battery staple"},
         )
 
     assert response.status_code == 422
@@ -181,7 +181,7 @@ def test_api_me_returns_session_authenticated_actor(engine: Engine) -> None:
         client = _client_with_session_factory(session_factory)
         login_response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
 
         response = client.get("/api/auth/me")
@@ -239,7 +239,7 @@ def test_api_me_uses_bearer_when_both_credentials_are_present(engine: Engine) ->
         client = _client_with_session_factory(session_factory)
         login_response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
 
         response = client.get(
@@ -265,7 +265,7 @@ def test_api_logout_revokes_browser_session_and_clears_cookie(engine: Engine) ->
         client = _client_with_session_factory(session_factory)
         login_response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
 
         response = client.delete("/api/auth/session")
@@ -296,7 +296,7 @@ def test_api_logout_does_not_revoke_bearer_when_bearer_wins(engine: Engine) -> N
         client = _client_with_session_factory(session_factory)
         login_response = client.post(
             "/api/auth/session",
-            json={"username": "alice", "password": "password"},
+            json={"username": "alice", "password": "correct horse battery staple"},
         )
 
         logout_response = client.delete(

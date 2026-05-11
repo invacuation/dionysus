@@ -35,7 +35,7 @@ def _create_user_and_session_cookie(session_factory: sessionmaker[Session]) -> s
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         assign_permission(
             session,
@@ -69,7 +69,7 @@ def _create_user_with_permission_and_session_cookie(
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         if permission is not None:
             assign_permission(

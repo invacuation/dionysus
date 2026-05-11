@@ -80,6 +80,20 @@ def test_canonicalize_username_trims_surrounding_whitespace() -> None:
 @pytest.mark.parametrize(
     "username",
     [
+        "alice@-example.com",
+        "alice@example-.com",
+        "alice@example.com.",
+        "alice@☃.com",
+    ],
+)
+def test_canonicalize_username_rejects_invalid_domain_labels(username: str) -> None:
+    with pytest.raises(ValueError, match="username"):
+        canonicalize_username(username)
+
+
+@pytest.mark.parametrize(
+    "username",
+    [
         "",
         "alice@",
         "@example.com",

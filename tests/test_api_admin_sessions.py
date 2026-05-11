@@ -36,7 +36,7 @@ def _create_user(
             session,
             username=username,
             display_name=display_name,
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         assign_permission(
             session,
@@ -54,7 +54,7 @@ def _create_user(
 def _login(client: TestClient) -> str:
     response = client.post(
         "/api/auth/session",
-        json={"username": "alice", "password": "password"},
+        json={"username": "alice", "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
     return response.json()["session_id"]

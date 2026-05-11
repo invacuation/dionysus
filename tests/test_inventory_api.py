@@ -42,14 +42,14 @@ def _login_user(client: TestClient, session_factory: sessionmaker[Session]) -> s
             session,
             username="alice",
             display_name="Alice",
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         user_id = user.id
         session.commit()
 
     response = client.post(
         "/api/auth/session",
-        json={"username": "alice", "password": "password"},
+        json={"username": "alice", "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
     return user_id

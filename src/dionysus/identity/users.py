@@ -11,10 +11,35 @@ from dionysus.security.passwords import hash_password, verify_password
 
 _USERNAME_CHARS = frozenset(ascii_letters + digits + ".!#$%&'*+/=?^_`{|}~-")
 _DOMAIN_CHARS = frozenset(ascii_letters + digits + ".-")
+_DOMAIN_LABEL_CHARS = frozenset(ascii_letters.lower() + digits + "-")
 
 
 def _has_control_character(value: str) -> bool:
     return any(unicodedata.category(char).startswith("C") for char in value)
+
+
+def _validate_unicode_domain_label(label: str) -> None:
+    if (
+        not label
+        or not label[0].isalnum()
+        or not label[-1].isalnum()
+        or any(not (char.isalnum() or char == "-") for char in label)
+    ):
+        raise ValueError("Invalid username")
+
+
+def _validate_ascii_domain(ascii_domain: str) -> None:
+    if len(ascii_domain) > 253:
+        raise ValueError("Invalid username")
+
+    for label in ascii_domain.split("."):
+        if (
+            not 1 <= len(label) <= 63
+            or label[0] not in ascii_letters.lower() + digits
+            or label[-1] not in ascii_letters.lower() + digits
+            or any(char not in _DOMAIN_LABEL_CHARS for char in label)
+        ):
+            raise ValueError("Invalid username")
 
 
 def canonicalize_username(username: str) -> str:
@@ -38,6 +63,8 @@ def canonicalize_username(username: str) -> str:
             raise ValueError("Invalid username")
         if any(char not in _USERNAME_CHARS for char in local):
             raise ValueError("Invalid username")
+        for label in domain.split("."):
+            _validate_unicode_domain_label(label)
 
         try:
             ascii_domain = domain.lower().encode("idna").decode("ascii")
@@ -45,6 +72,7 @@ def canonicalize_username(username: str) -> str:
             raise ValueError("Invalid username") from exc
         if any(char not in _DOMAIN_CHARS for char in ascii_domain):
             raise ValueError("Invalid username")
+        _validate_ascii_domain(ascii_domain)
         canonical = f"{local}@{ascii_domain}"
 
     if not 3 <= len(canonical) <= 150:

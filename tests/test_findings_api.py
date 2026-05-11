@@ -49,7 +49,7 @@ def _login_user(
             session,
             username=username,
             display_name=display_name,
-            password="password",  # noqa: S106 - test fixture password
+            password="correct horse battery staple",  # noqa: S106 - test fixture password
         )
         if grant_admin:
             assign_permission(
@@ -66,7 +66,7 @@ def _login_user(
 
     response = client.post(
         "/api/auth/session",
-        json={"username": username, "password": "password"},
+        json={"username": username, "password": "correct horse battery staple"},
     )
     assert response.status_code == 200
     return user_id
@@ -1216,8 +1216,8 @@ def test_findings_api_detail_resolves_activity_display_names_for_users_and_machi
             bob = create_user(
                 session,
                 username="bob",
-                display_name="",
-                password="password",  # noqa: S106 - test fixture password
+                display_name="bob",
+                password="correct horse battery staple",  # noqa: S106 - test fixture password
             )
             _raw_secret, credential = create_machine_credential(session, name="review-bot")
             request = FindingStatusChangeRequest(
