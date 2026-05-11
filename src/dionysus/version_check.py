@@ -74,10 +74,10 @@ def bump_level_for_title(title: str) -> str:
         )
 
     commit_type = match.group("type")
+    if match.group("breaking") or commit_type == "feat":
+        return "minor"
     if commit_type in {"docs", "chore"}:
         return "none"
-    if commit_type == "feat" or match.group("breaking"):
-        return "minor"
     return "patch"
 
 

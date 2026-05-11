@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from re import escape
 
@@ -13,6 +14,8 @@ from dionysus.version_check import (
     read_project_versions,
     validate_versions,
 )
+
+ROOT = Path(__file__).parents[1]
 
 
 def write_project_versions(root: Path, version: str) -> None:
@@ -51,10 +54,24 @@ def test_bump_version(version: str, level: str, expected: str) -> None:
         ("ci: enforce version bumps", "0.3.0", "0.3.1"),
         ("feat(imports): add scanner metadata", "0.3.0", "0.4.0"),
         ("feat!: replace permission model", "0.3.0", "0.4.0"),
+        ("docs!: replace documented deployment contract", "0.3.0", "0.4.0"),
+        ("chore(release)!: drop legacy version sync", "0.3.0", "0.4.0"),
     ],
 )
 def test_expected_version_for_title(title: str, base_version: str, expected: str) -> None:
     assert expected_version_for_title(title, base_version) == expected
+
+
+def test_semantic_release_config_matches_breaking_title_policy() -> None:
+    config = json.loads((ROOT / ".releaserc.json").read_text(encoding="utf-8"))
+    analyzer = next(
+        plugin for plugin in config["plugins"] if plugin[0] == "@semantic-release/commit-analyzer"
+    )
+    rules = analyzer[1]["releaseRules"]
+
+    assert {"breaking": True, "release": "minor"} in rules
+    assert expected_version_for_title("docs!: replace deployment contract", "0.3.0") == "0.4.0"
+    assert expected_version_for_title("chore!: remove legacy release sync", "0.3.0") == "0.4.0"
 
 
 def test_expected_version_rejects_non_conventional_title() -> None:
