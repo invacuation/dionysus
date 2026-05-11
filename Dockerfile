@@ -27,4 +27,4 @@ COPY alembic.ini ./
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 EXPOSE 8000
-CMD ["uvicorn", "dionysus.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn dionysus.app:create_app --factory --host 0.0.0.0 --port 8000"]

@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DIONYSUS_ENVIRONMENT: production
+      DIONYSUS_ENVIRONMENT: development
       DIONYSUS_DATABASE_URL: postgresql+psycopg://dionysus:dionysus@db:5432/dionysus
     depends_on:
       db:
