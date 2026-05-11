@@ -44,10 +44,10 @@ def _vite_compatible_node_bin() -> Path:
 
     for node_bin in candidates:
         version = _node_version_tuple(node_bin)
-        if version and (version >= (22, 12, 0) or (20, 19, 0) <= version < (21, 0, 0)):
+        if version and version >= (22, 12, 0):
             return node_bin
 
-    pytest.skip("frontend build requires Node >=20.19 or >=22.12")
+    pytest.skip("frontend build requires Node >=22.12")
 
 
 def _bun_bin() -> Path:

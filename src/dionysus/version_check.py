@@ -10,6 +10,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+VERSION_FILE = ".dionysus-version"
+LEGACY_VERSION_FILE = ".VERSION"
 VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 TITLE_RE = re.compile(
     r"^(?P<type>feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)"
@@ -98,7 +100,7 @@ def max_version(versions: list[str]) -> str:
 
 
 def read_project_versions(root: Path) -> dict[str, str]:
-    version_file = root / ".VERSION"
+    version_file = root / VERSION_FILE
     pyproject_file = root / "pyproject.toml"
     package_file = root / "frontend" / "package.json"
 
@@ -106,7 +108,7 @@ def read_project_versions(root: Path) -> dict[str, str]:
     package = json.loads(package_file.read_text(encoding="utf-8"))
 
     return {
-        ".VERSION": version_file.read_text(encoding="utf-8").strip(),
+        VERSION_FILE: version_file.read_text(encoding="utf-8").strip(),
         "pyproject.toml": pyproject["project"]["version"],
         "frontend/package.json": package["version"],
     }
@@ -131,9 +133,14 @@ def discover_base_version(root: Path) -> str:
     versions: list[str] = []
 
     try:
-        versions.append(git_output(["show", "origin/main:.VERSION"], root))
+        versions.append(git_output(["show", f"origin/main:{VERSION_FILE}"], root))
     except subprocess.CalledProcessError as exc:
-        raise VersionCheckError(f"Unable to read origin/main:.VERSION: {exc.stderr}") from exc
+        try:
+            versions.append(git_output(["show", f"origin/main:{LEGACY_VERSION_FILE}"], root))
+        except subprocess.CalledProcessError as legacy_exc:
+            raise VersionCheckError(
+                f"Unable to read origin/main:{VERSION_FILE}: {exc.stderr}"
+            ) from legacy_exc
 
     tags = git_output(["tag", "--list", "v*"], root).splitlines()
     versions.extend(
@@ -180,7 +187,7 @@ def format_result_message(result: VersionCheckResult) -> str:
     ]
     lines.extend(
         format_version_line(path, result.versions[path], result.expected_version)
-        for path in [".VERSION", "pyproject.toml", "frontend/package.json"]
+        for path in [VERSION_FILE, "pyproject.toml", "frontend/package.json"]
     )
     return "\n".join(lines)
 
