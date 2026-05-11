@@ -65,6 +65,21 @@ cd frontend
 bun run e2e:headed
 ```
 
+
+## Docker
+
+Build and run the full stack (API + React frontend + PostgreSQL):
+
+```bash
+docker compose up --build
+```
+
+The app is available at `http://127.0.0.1:8000`.
+
+Set `DIONYSUS_DATABASE_URL` on the `app` service in `docker-compose.yml` if you
+want to point to a managed cloud database instead of the bundled PostgreSQL
+container.
+
 ## Quality Gate
 
 Run this before committing code changes:
