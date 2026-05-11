@@ -11,6 +11,7 @@ import {
   findingInventoryScopeFromSearchParams,
   findingParams,
   inventoryScopeLabel,
+  resultLabel,
   type FindingInventoryScope,
 } from "../src/features/findings/findings-page"
 import type { Asset, Project } from "../src/lib/api"
@@ -99,7 +100,7 @@ describe("inventoryScopeLabel", () => {
     const api = asset({ name: "API", path: "root/api" })
 
     expect(inventoryScopeLabel({ assetId: "", projectId: "" }, [alpha], [])).toBe(
-      "Entire inventory",
+      "the entire inventory",
     )
     expect(inventoryScopeLabel({ assetId: "", projectId: alpha.id }, [alpha], [api])).toBe(
       "Alpha",
@@ -248,6 +249,15 @@ describe("finding inventory tree helpers", () => {
 })
 
 describe("findings page labels", () => {
+  test("uses uncapitalized findings count copy for the entire inventory", () => {
+    expect(resultLabel(false, 1, "the entire inventory")).toBe(
+      "1 finding in the entire inventory",
+    )
+    expect(resultLabel(false, 2, "the entire inventory")).toBe(
+      "2 findings in the entire inventory",
+    )
+  })
+
   test("uses Findings rather than verbose alternatives in the primary UI labels", () => {
     const pageSource = readFileSync(
       join(import.meta.dir, "../src/features/findings/findings-page.tsx"),

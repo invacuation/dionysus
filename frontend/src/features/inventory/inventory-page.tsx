@@ -827,7 +827,9 @@ function ProjectSettingsSummary({
           <span>{project.grace_period_enabled ? "Enabled" : "Disabled"}</span>
         </DetailRow>
         <DetailRow label="Grace percent">
-          <span className="whitespace-nowrap">{project.grace_period_percent}%</span>
+          <span className="inline-block min-w-max whitespace-nowrap">
+            {project.grace_period_percent}%
+          </span>
         </DetailRow>
       </dl>
       {updateProjectMutation.isError ? (

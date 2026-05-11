@@ -233,13 +233,14 @@ describe("normalizeGracePercent", () => {
 })
 
 describe("project grace percentage UI", () => {
-  test("keeps the grace percentage value on one line", () => {
+  test("keeps the grace percentage value on one uncropped line", () => {
     const source = readFileSync(
       join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
       "utf8",
     )
 
-    expect(source).toContain('className="whitespace-nowrap">{project.grace_period_percent}%')
+    expect(source).toContain('className="inline-block min-w-max whitespace-nowrap"')
+    expect(source).toContain("{project.grace_period_percent}%")
   })
 })
 
