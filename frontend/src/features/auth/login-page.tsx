@@ -8,15 +8,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ThemeModeToggle } from "@/components/theme-mode-toggle"
 import { Input } from "@/components/ui/input"
+import type { ThemeMode } from "@/lib/theme"
 
 type LoginPageProps = {
   error?: string | null
   isSubmitting: boolean
+  themeMode: ThemeMode
+  onThemeModeChange: (mode: ThemeMode) => void
   onSubmit: (credentials: { username: string; password: string }) => void
 }
 
-export function LoginPage({ error, isSubmitting, onSubmit }: LoginPageProps) {
+export function LoginPage({
+  error,
+  isSubmitting,
+  onSubmit,
+  onThemeModeChange,
+  themeMode,
+}: LoginPageProps) {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const errorId = "login-error"
@@ -30,7 +40,10 @@ export function LoginPage({ error, isSubmitting, onSubmit }: LoginPageProps) {
     <main className="grid min-h-screen place-items-center bg-background px-5 py-8 text-foreground">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">Sign in</CardTitle>
+          <div className="flex flex-col gap-4">
+            <CardTitle className="text-xl">Sign in</CardTitle>
+            <ThemeModeToggle mode={themeMode} onModeChange={onThemeModeChange} />
+          </div>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

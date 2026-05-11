@@ -10,7 +10,9 @@ import type { ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { ThemeModeToggle } from "@/components/theme-mode-toggle"
 import type { ActorMetadata } from "@/lib/api"
+import type { ThemeMode } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 export type AppRoute = "overview" | "findings" | "inventory" | "imports" | "admin"
@@ -20,8 +22,10 @@ type AppShellProps = {
   actor: ActorMetadata
   children: ReactNode
   isLoggingOut?: boolean
+  themeMode: ThemeMode
   onNavigate: (route: AppRoute) => void
   onLogout: () => void
+  onThemeModeChange: (mode: ThemeMode) => void
 }
 
 const navItems = [
@@ -43,6 +47,8 @@ export function AppShell({
   isLoggingOut = false,
   onLogout,
   onNavigate,
+  onThemeModeChange,
+  themeMode,
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -80,22 +86,29 @@ export function AppShell({
             ))}
           </nav>
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t pt-4 lg:mt-auto lg:block lg:border-t-0 lg:pt-6">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{actor.display_name}</p>
+          <div className="mt-4 border-t pt-4 lg:mt-auto lg:border-t-0 lg:pt-6">
+            <ThemeModeToggle
+              className="w-full"
+              mode={themeMode}
+              onModeChange={onThemeModeChange}
+            />
+            <div className="mt-4 flex items-center justify-between gap-3 lg:block">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{actor.display_name}</p>
+              </div>
+              <Button
+                aria-label="Sign out"
+                className="lg:mt-3 lg:w-full"
+                disabled={isLoggingOut}
+                onClick={onLogout}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                <span>Sign out</span>
+              </Button>
             </div>
-            <Button
-              aria-label="Sign out"
-              className="lg:mt-3 lg:w-full"
-              disabled={isLoggingOut}
-              onClick={onLogout}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <LogOut className="size-4" aria-hidden="true" />
-              <span>Sign out</span>
-            </Button>
           </div>
         </aside>
 
