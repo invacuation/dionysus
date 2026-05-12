@@ -233,6 +233,34 @@ describe("normalizeGracePercent", () => {
 })
 
 describe("project grace percentage UI", () => {
+  test("exposes project identity rename controls in project settings", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).toContain('aria-label="Project settings slug"')
+    expect(source).toContain('aria-label="Project settings name"')
+    expect(source).toContain("Save project identity")
+    expect(source).toContain("slug: projectSlug")
+    expect(source).toContain("name: projectName")
+  })
+
+  test("places project identity update errors above the rename fields", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+    const identityErrorIndex = source.indexOf("{showProjectIdentityError")
+    const slugFieldIndex = source.indexOf('aria-label="Project settings slug"')
+    const gracePercentIndex = source.indexOf('aria-label="Grace percent"')
+    const settingsErrorIndex = source.indexOf("{showProjectSettingsError", gracePercentIndex)
+
+    expect(identityErrorIndex).toBeGreaterThan(-1)
+    expect(identityErrorIndex).toBeLessThan(slugFieldIndex)
+    expect(settingsErrorIndex).toBeGreaterThan(gracePercentIndex)
+  })
+
   test("keeps grace period controls in their dedicated sections", () => {
     const source = readFileSync(
       join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
