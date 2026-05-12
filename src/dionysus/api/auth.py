@@ -14,8 +14,9 @@ from dionysus.identity.actors import (
 )
 from dionysus.identity.cookies import SESSION_COOKIE, cookies_secure
 from dionysus.identity.sessions import create_session, get_active_session, revoke_session
-from dionysus.identity.users import authenticate_user
-from dionysus.models.identity import PrincipalType
+from dionysus.identity.users import authenticate_user, set_user_password
+from dionysus.models.identity import PrincipalType, User
+from dionysus.security.passwords import verify_password
 from dionysus.security.settings import effective_session_timeout_minutes
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -29,6 +30,15 @@ class LoginRequest(BaseModel):
 
     username: str
     password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    """Current and replacement password for a local user account."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    new_password: str
 
 
 class ActorResponse(BaseModel):
@@ -47,9 +57,10 @@ class ActorResponse(BaseModel):
     mixed_credentials_present: bool
     bearer_token_present: bool
     session_cookie_present: bool
+    local_auth_enabled: bool
 
 
-def _actor_response(actor: AuthenticatedActor) -> ActorResponse:
+def _actor_response(actor: AuthenticatedActor, *, local_auth_enabled: bool) -> ActorResponse:
     return ActorResponse(
         actor_type=actor.actor_type,
         actor_id=actor.actor_id,
@@ -62,6 +73,7 @@ def _actor_response(actor: AuthenticatedActor) -> ActorResponse:
         mixed_credentials_present=actor.mixed_credentials_present,
         bearer_token_present=actor.bearer_token_present,
         session_cookie_present=actor.session_cookie_present,
+        local_auth_enabled=local_auth_enabled,
     )
 
 
@@ -152,7 +164,7 @@ def create_browser_session(
         secure=cookies_secure(request),
         samesite="lax",
     )
-    return _actor_response(actor)
+    return _actor_response(actor, local_auth_enabled=settings.local_auth_enabled)
 
 
 @router.delete("/session", status_code=status.HTTP_204_NO_CONTENT)
@@ -211,6 +223,7 @@ def delete_browser_session(request: Request, response: Response) -> Response:
 
 @router.get("/me", response_model=ActorResponse)
 def current_actor(
+    request: Request,
     actor: AuthenticatedActor = authenticated_actor_dependency,
 ) -> ActorResponse:
     """Return normalized metadata for the current authenticated actor.
@@ -223,7 +236,63 @@ def current_actor(
         Safe actor metadata for the authenticated caller.
     """
 
-    return _actor_response(actor)
+    return _actor_response(
+        actor,
+        local_auth_enabled=request.app.state.settings.local_auth_enabled,
+    )
+
+
+@router.patch("/password", status_code=status.HTTP_204_NO_CONTENT)
+def change_current_user_password(
+    request: Request,
+    payload: PasswordChangeRequest,
+    actor: AuthenticatedActor = authenticated_actor_dependency,
+) -> Response:
+    """Change the authenticated local user's password after verifying the current password."""
+
+    if not request.app.state.settings.local_auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local authentication is disabled",
+        )
+    if actor.actor_type != ActorType.USER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password changes are only available for user sessions",
+        )
+
+    session_factory = request.app.state.session_factory
+    with session_factory() as db_session:
+        user = db_session.get(User, actor.actor_id)
+        if (
+            user is None
+            or user.password_credential is None
+            or not verify_password(payload.current_password, user.password_credential.password_hash)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+        try:
+            set_user_password(db_session, user, payload.new_password)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid new password",
+            ) from exc
+        record_audit_event(
+            db_session,
+            event_type="auth.password.change",
+            actor_principal_type=actor.principal_type,
+            actor_principal_id=actor.principal_id,
+            actor_display=actor.display_name,
+            target_type="user",
+            target_id=user.id,
+            ip_address=_client_host(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+        db_session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _client_host(request: Request) -> str | None:

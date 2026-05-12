@@ -388,11 +388,21 @@ export type ActorMetadata = {
   mixed_credentials_present: boolean
   bearer_token_present: boolean
   session_cookie_present: boolean
+  local_auth_enabled: boolean
 }
 
 export type LoginCredentials = {
   username: string
   password: string
+}
+
+export type ChangeCurrentUserPasswordParams = {
+  current_password: string
+  new_password: string
+}
+
+export type SetAccessUserPasswordParams = {
+  new_password: string
 }
 
 export type Project = {
@@ -582,6 +592,21 @@ export function logout(): Promise<void> {
   return deleteRequest("/api/auth/session")
 }
 
+export async function changeCurrentUserPassword(
+  params: ChangeCurrentUserPasswordParams,
+): Promise<void> {
+  const response = await fetch("/api/auth/password", {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+    credentials: "same-origin",
+  })
+  await assertOk(response)
+}
+
 export function listProjects(): Promise<ProjectListResponse> {
   return getJson<ProjectListResponse>("/api/projects")
 }
@@ -765,6 +790,25 @@ export function assignAccessPermission(
     "/api/admin/access/permissions",
     params,
   )
+}
+
+export async function setAccessUserPassword(
+  userId: string,
+  params: SetAccessUserPasswordParams,
+): Promise<void> {
+  const response = await fetch(
+    `/api/admin/access/users/${encodeURIComponent(userId)}/password`,
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(params),
+      credentials: "same-origin",
+    },
+  )
+  await assertOk(response)
 }
 
 export function getSecuritySettings(): Promise<SecuritySettings> {

@@ -10,7 +10,7 @@ import dionysus.api.access as access_api
 from conftest import create_prepared_test_app
 from dionysus.identity.machines import create_machine_credential
 from dionysus.identity.permissions import assign_permission
-from dionysus.identity.users import create_user
+from dionysus.identity.users import authenticate_user, create_user
 from dionysus.models import (
     AuditLogEvent,
     Base,
@@ -30,6 +30,12 @@ def _session_factory_for_connection(connection: Connection) -> sessionmaker[Sess
 
 def _client_with_session_factory(session_factory: sessionmaker[Session]) -> TestClient:
     app = create_prepared_test_app()
+    app.state.session_factory = session_factory
+    return TestClient(app)
+
+
+def _client_with_local_auth_disabled(session_factory: sessionmaker[Session]) -> TestClient:
+    app = create_prepared_test_app(local_auth_enabled=False)
     app.state.session_factory = session_factory
     return TestClient(app)
 
@@ -393,3 +399,59 @@ def test_access_api_assigns_allow_and_deny_scoped_permissions(engine: Engine) ->
     assert deny_response.json()["effect"] == "deny"
     assert [assignment.effect for assignment in assignments] == ["allow", "deny"]
     assert [event.metadata_json["effect"] for event in audit_events] == ["allow", "deny"]
+
+
+def test_access_api_admin_changes_user_password_and_audits(engine: Engine) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory, username="admin", permission="access:manage")
+        target_id = _create_user(session_factory, username="bob", permission=None)
+        client = _client_with_session_factory(session_factory)
+        _login(client, username="admin")
+
+        response = client.patch(
+            f"{ADMIN_ACCESS_URL}/users/{target_id}/password",
+            json={"new_password": "new correct horse battery"},
+        )
+        with session_factory() as session:
+            old_password_user = authenticate_user(
+                session,
+                "bob",
+                "correct horse battery staple",
+            )
+            new_password_user = authenticate_user(session, "bob", "new correct horse battery")
+            audit_event = session.scalar(
+                select(AuditLogEvent).where(AuditLogEvent.event_type == "access.user.password.set")
+            )
+
+    assert response.status_code == 204
+    assert old_password_user is None
+    assert new_password_user is not None
+    assert audit_event is not None
+    assert audit_event.target_type == "user"
+    assert audit_event.target_id == target_id
+    assert audit_event.metadata_json == {"username": "bob"}
+
+
+def test_access_api_admin_password_change_is_disabled_when_local_auth_is_disabled(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory, username="admin", permission="access:manage")
+        target_id = _create_user(session_factory, username="bob", permission=None)
+        client = _client_with_local_auth_disabled(session_factory)
+        _login(client, username="admin")
+
+        response = client.patch(
+            f"{ADMIN_ACCESS_URL}/users/{target_id}/password",
+            json={"new_password": "new correct horse battery"},
+        )
+        with session_factory() as session:
+            unchanged_user = authenticate_user(session, "bob", "correct horse battery staple")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Local authentication is disabled"}
+    assert unchanged_user is not None

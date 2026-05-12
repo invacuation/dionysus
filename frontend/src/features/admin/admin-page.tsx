@@ -32,6 +32,7 @@ import {
   regenerateMachineCredentialSecret,
   revokeMachineCredential,
   revokeUserSession,
+  setAccessUserPassword,
   testPermission,
   updateSecuritySettings,
   type AccessListResponse,
@@ -124,6 +125,11 @@ type AccessPermissionForm = {
   scopeId: string
 }
 
+type AccessPasswordForm = {
+  userId: string
+  newPassword: string
+}
+
 type AdminSortState<Column extends string> = {
   column: Column
   direction: SortDirection
@@ -143,8 +149,9 @@ const defaultAccessPermissionForm: AccessPermissionForm = {
   scopeType: "project",
   scopeId: "",
 }
+const defaultAccessPasswordForm: AccessPasswordForm = { userId: "", newPassword: "" }
 
-export function AdminPage() {
+export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: boolean }) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<AdminTab>("audit-log")
   const [draftFilters, setDraftFilters] = useState<AuditLogFilters>(defaultFilters)
@@ -359,6 +366,7 @@ export function AdminPage() {
           isLoading={accessQuery.isPending}
           onChanged={invalidateAdminQueries}
           onRefresh={() => void accessQuery.refetch()}
+          localAuthEnabled={localAuthEnabled}
           projects={projectsQuery.data?.projects ?? []}
         />
       ) : activeTab === "import-history" ? (
@@ -779,6 +787,7 @@ function AccessManagementSection({
   error,
   isError,
   isLoading,
+  localAuthEnabled,
   onChanged,
   onRefresh,
   projects,
@@ -787,6 +796,7 @@ function AccessManagementSection({
   error: Error | null
   isError: boolean
   isLoading: boolean
+  localAuthEnabled: boolean
   onChanged: () => Promise<void>
   onRefresh: () => void
   projects: Project[]
@@ -796,6 +806,7 @@ function AccessManagementSection({
     useState<AccessMembershipForm>(defaultAccessMembershipForm)
   const [permissionForm, setPermissionForm] =
     useState<AccessPermissionForm>(defaultAccessPermissionForm)
+  const [passwordForm, setPasswordForm] = useState<AccessPasswordForm>(defaultAccessPasswordForm)
 
   const createGroupMutation = useMutation({
     mutationFn: () =>
@@ -827,6 +838,16 @@ function AccessManagementSection({
       ),
     onSuccess: async () => {
       setPermissionForm(defaultAccessPermissionForm)
+      await onChanged()
+    },
+  })
+  const setPasswordMutation = useMutation({
+    mutationFn: () =>
+      setAccessUserPassword(passwordForm.userId, {
+        new_password: passwordForm.newPassword,
+      }),
+    onSuccess: async () => {
+      setPasswordForm(defaultAccessPasswordForm)
       await onChanged()
     },
   })
@@ -864,6 +885,8 @@ function AccessManagementSection({
   )
   const canAssignPermission =
     normalizedPermission.principal_id.length > 0 && normalizedPermission.permission.length > 0
+  const canSetPassword =
+    passwordForm.userId.length > 0 && passwordForm.newPassword.trim().length > 0
 
   return (
     <div className="space-y-4">
@@ -874,7 +897,7 @@ function AccessManagementSection({
         <AccessMetric label="Permissions" value={access.permission_assignments.length} />
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-3">
+      <section className="grid gap-3 xl:grid-cols-4">
         <Card className="py-0">
           <CardContent className="space-y-3 p-4">
             <h2 className="text-sm font-semibold">Create Group</h2>
@@ -1115,6 +1138,61 @@ function AccessManagementSection({
             </form>
           </CardContent>
         </Card>
+
+        {canShowAccessUserPasswordActions(localAuthEnabled) ? (
+          <Card className="py-0">
+            <CardContent className="space-y-3 p-4">
+              <h2 className="text-sm font-semibold">Set User Password</h2>
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (canSetPassword) {
+                    setPasswordMutation.mutate()
+                  }
+                }}
+              >
+                <Field label="User">
+                  <Select
+                    onChange={(value) =>
+                      setPasswordForm((current) => ({ ...current, userId: value }))
+                    }
+                    value={passwordForm.userId}
+                  >
+                    <option value="">Select user</option>
+                    {access.users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.display_name} ({user.username})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="New Password">
+                  <Input
+                    autoComplete="new-password"
+                    onChange={(event) =>
+                      setPasswordForm((current) => ({
+                        ...current,
+                        newPassword: event.target.value,
+                      }))
+                    }
+                    placeholder="New password"
+                    type="password"
+                    value={passwordForm.newPassword}
+                  />
+                </Field>
+                <MutationError error={setPasswordMutation.error} />
+                <Button
+                  disabled={!canSetPassword || setPasswordMutation.isPending}
+                  size="sm"
+                  type="submit"
+                >
+                  {setPasswordMutation.isPending ? "Saving..." : "Set password"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
@@ -2094,6 +2172,10 @@ export function scopeOptionsForAccess(): ScopeOption[] {
     { label: "Unscoped", scopeType: "", value: "" },
     { label: "Project", scopeType: "project", value: "project" },
   ]
+}
+
+export function canShowAccessUserPasswordActions(localAuthEnabled: boolean): boolean {
+  return localAuthEnabled
 }
 
 export function normalizeSecuritySettingsForm(

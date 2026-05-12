@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
     session_absolute_timeout_minutes: int = Field(default=480, ge=1)
     machine_access_token_expires_minutes: int = Field(default=15, ge=1)
     machine_refresh_token_expires_minutes: int = Field(default=60, ge=1)
+    local_auth_enabled: bool = True
     bootstrap_admin_username: str | None = None
     bootstrap_admin_password: str | None = None
     bootstrap_admin_display_name: str | None = None

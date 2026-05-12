@@ -6,12 +6,15 @@ import {
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react"
+import { useMutation } from "@tanstack/react-query"
 import type { ReactNode } from "react"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { ThemeModeToggle } from "@/components/theme-mode-toggle"
-import type { ActorMetadata } from "@/lib/api"
+import { changeCurrentUserPassword, type ActorMetadata } from "@/lib/api"
 import type { ThemeMode } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
@@ -50,6 +53,30 @@ export function AppShell({
   onThemeModeChange,
   themeMode,
 }: AppShellProps) {
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const changePasswordMutation = useMutation({
+    mutationFn: changeCurrentUserPassword,
+    onSuccess: () => {
+      setCurrentPassword("")
+      setNewPassword("")
+      setShowPasswordForm(false)
+    },
+  })
+  const canChangePassword = actor.actor_type === "user" && actor.local_auth_enabled
+
+  function handlePasswordSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!currentPassword || !newPassword) {
+      return
+    }
+    changePasswordMutation.mutate({
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen lg:grid-cols-[17rem_1fr]">
@@ -96,6 +123,54 @@ export function AppShell({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{actor.display_name}</p>
               </div>
+              {canChangePassword ? (
+                <div className="mt-3">
+                  <Button
+                    className="w-full"
+                    onClick={() => setShowPasswordForm((current) => !current)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Change password
+                  </Button>
+                  {showPasswordForm ? (
+                    <form className="mt-3 space-y-2" onSubmit={handlePasswordSubmit}>
+                      <Input
+                        autoComplete="current-password"
+                        disabled={changePasswordMutation.isPending}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        placeholder="Current password"
+                        type="password"
+                        value={currentPassword}
+                      />
+                      <Input
+                        autoComplete="new-password"
+                        disabled={changePasswordMutation.isPending}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        placeholder="New password"
+                        type="password"
+                        value={newPassword}
+                      />
+                      {changePasswordMutation.isError ? (
+                        <p className="text-xs text-destructive">
+                          {changePasswordMutation.error.message}
+                        </p>
+                      ) : null}
+                      <Button
+                        className="w-full"
+                        disabled={
+                          changePasswordMutation.isPending || !currentPassword || !newPassword
+                        }
+                        size="sm"
+                        type="submit"
+                      >
+                        {changePasswordMutation.isPending ? "Saving..." : "Save password"}
+                      </Button>
+                    </form>
+                  ) : null}
+                </div>
+              ) : null}
               <Button
                 aria-label="Sign out"
                 className="lg:mt-3 lg:w-full"

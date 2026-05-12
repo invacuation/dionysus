@@ -12,6 +12,7 @@ from dionysus.audit import record_audit_event
 from dionysus.identity.actors import AuthenticatedActor
 from dionysus.identity.authorization import require_permission
 from dionysus.identity.permissions import KNOWN_PERMISSIONS, assign_permission
+from dionysus.identity.users import set_user_password
 from dionysus.models.identity import (
     Group,
     GroupMembership,
@@ -161,6 +162,14 @@ class PermissionAssignRequest(BaseModel):
     effect: PermissionEffect
     scope_type: str | None = None
     scope_id: str | None = None
+
+
+class UserPasswordSetRequest(BaseModel):
+    """Request body for replacing a user's local password credential."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    new_password: str
 
 
 @router.get("", response_model=AccessListResponse)
@@ -460,6 +469,49 @@ def permission_assign_api(
         return _permission_assignment_response(assignment)
 
 
+@router.patch(
+    "/users/{user_id}/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def user_password_set_api(
+    request: Request,
+    user_id: str,
+    payload: UserPasswordSetRequest,
+    actor: AuthenticatedActor = access_manage_actor_dependency,
+) -> None:
+    """Replace a user's local password credential for authorized access managers."""
+
+    if not request.app.state.settings.local_auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local authentication is disabled",
+        )
+
+    session_factory = request.app.state.session_factory
+    with session_factory() as session:
+        user = _get_user_or_404(session, user_id)
+        try:
+            set_user_password(session, user, payload.new_password)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid new password",
+            ) from exc
+        record_audit_event(
+            session,
+            event_type="access.user.password.set",
+            actor_principal_type=actor.principal_type,
+            actor_principal_id=actor.principal_id,
+            actor_display=actor.display_name,
+            target_type="user",
+            target_id=user.id,
+            ip_address=_client_host(request),
+            user_agent=request.headers.get("user-agent"),
+            metadata={"username": user.username},
+        )
+        session.commit()
+
+
 def _user_response(user: User) -> UserAccessResponse:
     return UserAccessResponse(
         id=user.id,
@@ -528,6 +580,13 @@ def _get_group_or_404(session: Session, group_id: str) -> Group:
     if group is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     return group
+
+
+def _get_user_or_404(session: Session, user_id: str) -> User:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
 
 
 def _ensure_principal_exists(

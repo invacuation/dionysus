@@ -4,6 +4,7 @@ import {
   actorLabel,
   actorPrincipalLabel,
   auditLogParams,
+  canShowAccessUserPasswordActions,
   defaultAdminSortState,
   filterAuditLogEvents,
   formatAuditMetadataForDisplay,
@@ -477,6 +478,13 @@ describe("permissionOptionsForAccess", () => {
   test("uses backend-provided permissions for filterable permission controls", () => {
     expect(permissionOptionsForAccess(accessList)).toEqual(["finding:view", "import:upload"])
     expect(permissionOptionsForAccess(null)).toEqual([])
+  })
+})
+
+describe("canShowAccessUserPasswordActions", () => {
+  test("shows user password actions only when local auth is enabled", () => {
+    expect(canShowAccessUserPasswordActions(true)).toBe(true)
+    expect(canShowAccessUserPasswordActions(false)).toBe(false)
   })
 })
 

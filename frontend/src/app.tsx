@@ -136,7 +136,7 @@ export function App() {
       ) : activeRoute === "imports" ? (
         <ImportsPage />
       ) : activeRoute === "admin" ? (
-        <AdminPage />
+        <AdminPage localAuthEnabled={currentActorQuery.data.local_auth_enabled} />
       ) : (
         <OverviewPage />
       )}

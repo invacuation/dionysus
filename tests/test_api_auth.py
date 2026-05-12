@@ -214,7 +214,112 @@ def test_api_me_returns_session_authenticated_actor(
         "mixed_credentials_present": False,
         "bearer_token_present": False,
         "session_cookie_present": True,
+        "local_auth_enabled": True,
     }
+
+
+def test_api_password_change_updates_current_user_password_and_audits(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        user_id = _create_user(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
+        login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        )
+
+        response = client.patch(
+            "/api/auth/password",
+            json={
+                "current_password": "correct horse battery staple",
+                "new_password": "new correct horse battery",
+            },
+        )
+        old_login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        )
+        new_login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "new correct horse battery"},
+        )
+        with session_factory() as session:
+            event = session.scalar(
+                select(AuditLogEvent).where(AuditLogEvent.event_type == "auth.password.change")
+            )
+
+    assert login_response.status_code == 200
+    assert response.status_code == 204
+    assert old_login_response.status_code == 401
+    assert new_login_response.status_code == 200
+    assert event is not None
+    assert event.actor_principal_id == user_id
+    assert event.target_type == "user"
+    assert event.target_id == user_id
+
+
+def test_api_password_change_rejects_wrong_current_password(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory)
+        client = _client_with_session_factory(session_factory, prepared_app_settings)
+        login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        )
+
+        response = client.patch(
+            "/api/auth/password",
+            json={
+                "current_password": "wrong password value",
+                "new_password": "new correct horse battery",
+            },
+        )
+        valid_login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        )
+
+    assert login_response.status_code == 200
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Current password is incorrect"}
+    assert valid_login_response.status_code == 200
+
+
+def test_api_password_change_is_disabled_when_local_auth_is_disabled(
+    engine: Engine,
+    prepared_app_settings: AppSettings,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory)
+        settings = prepared_app_settings.model_copy(update={"local_auth_enabled": False})
+        client = _client_with_session_factory(session_factory, settings)
+        login_response = client.post(
+            "/api/auth/session",
+            json={"username": "alice", "password": "correct horse battery staple"},
+        )
+
+        response = client.patch(
+            "/api/auth/password",
+            json={
+                "current_password": "correct horse battery staple",
+                "new_password": "new correct horse battery",
+            },
+        )
+
+    assert login_response.status_code == 200
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Local authentication is disabled"}
 
 
 def test_api_me_returns_bearer_authenticated_actor(

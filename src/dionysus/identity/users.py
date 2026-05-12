@@ -123,6 +123,17 @@ def create_user(session: Session, *, username: str, display_name: str, password:
     return user
 
 
+def set_user_password(session: Session, user: User, password: str) -> None:
+    """Replace a user's local password credential with a new hashed password."""
+
+    password_hash = hash_password(validate_password(password))
+    if user.password_credential is None:
+        user.password_credential = UserPasswordCredential(password_hash=password_hash)
+    else:
+        user.password_credential.password_hash = password_hash
+    session.flush()
+
+
 def get_user_by_username(session: Session, username: str) -> User | None:
     """Return the user account for a username.
 

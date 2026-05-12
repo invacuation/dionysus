@@ -6,6 +6,7 @@ from dionysus.identity.users import (
     canonicalize_username,
     create_user,
     get_user_by_username,
+    set_user_password,
 )
 from dionysus.models.identity import User
 
@@ -43,6 +44,37 @@ def test_authenticate_user_accepts_valid_password(db_session: Session) -> None:
 
     assert authenticated is not None
     assert authenticated.id == user.id
+
+
+def test_set_user_password_replaces_existing_password(db_session: Session) -> None:
+    user = create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="correct horse battery staple",  # noqa: S106
+    )
+
+    set_user_password(db_session, user, "new correct horse battery")
+    db_session.commit()
+
+    assert (
+        authenticate_user(db_session, "alice@example.com", "correct horse battery staple") is None
+    )
+    assert (
+        authenticate_user(db_session, "alice@example.com", "new correct horse battery") is not None
+    )
+
+
+def test_set_user_password_rejects_invalid_password(db_session: Session) -> None:
+    user = create_user(
+        db_session,
+        username="alice@example.com",
+        display_name="Alice Example",
+        password="correct horse battery staple",  # noqa: S106
+    )
+
+    with pytest.raises(ValueError, match="password"):
+        set_user_password(db_session, user, "short")
 
 
 def test_authenticate_user_rejects_wrong_password(db_session: Session) -> None:
