@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/invacuation/dionysus/compare/v0.5.0...v0.6.0) (2026-05-12)
+
+
+### Features
+
+* **auth:** allow local password changes ([#38](https://github.com/invacuation/dionysus/issues/38)) ([4eb8084](https://github.com/invacuation/dionysus/commit/4eb808441f1cbff4a468fcdfa77a9e4cb12e6cce)), closes [#37](https://github.com/invacuation/dionysus/issues/37)
+
 ## [0.5.0](https://github.com/invacuation/dionysus/compare/v0.4.3...v0.5.0) (2026-05-12)
 
 
