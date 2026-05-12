@@ -423,6 +423,8 @@ export type CreateProjectParams = {
 }
 
 export type UpdateProjectParams = {
+  slug?: string
+  name?: string
   require_peer_review_for_status_changes?: boolean
   grace_period_enabled?: boolean
   grace_period_percent?: number

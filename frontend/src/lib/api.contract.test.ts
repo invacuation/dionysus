@@ -216,6 +216,8 @@ const createdProject: Promise<Project> = createProject({
   require_peer_review_for_status_changes: true,
 })
 const updatedProject: Promise<Project> = updateProject("project-1", {
+  slug: "mobile-renamed",
+  name: "Mobile Renamed",
   require_peer_review_for_status_changes: true,
 })
 const createdFolder: Promise<Asset> = createFolder("project-1", {

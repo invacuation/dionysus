@@ -22,7 +22,13 @@ from dionysus.inventory.assets import (
     resolve_folder_path,
     set_asset_sla_overrides,
 )
-from dionysus.inventory.projects import create_project, delete_project, get_project, list_projects
+from dionysus.inventory.projects import (
+    create_project,
+    delete_project,
+    get_project,
+    list_projects,
+    update_project,
+)
 from dionysus.models.findings import Scan, ScannerKind
 from dionysus.models.inventory import AssetNode, Project
 
@@ -100,6 +106,8 @@ class ProjectUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    slug: str | None = None
+    name: str | None = None
     require_peer_review_for_status_changes: bool | None = None
     grace_period_enabled: bool | None = None
     grace_period_percent: int | None = None
@@ -268,21 +276,37 @@ def project_update_api(
             scope_id=project.id,
         )
         changes = _project_update_changes(project, payload)
-        if "require_peer_review_for_status_changes" in payload.model_fields_set:
-            require_peer_review = payload.require_peer_review_for_status_changes
-            if require_peer_review is None:
-                raise _bad_request("require_peer_review_for_status_changes must be a boolean")
-            project.require_peer_review_for_status_changes = require_peer_review
-        if "grace_period_enabled" in payload.model_fields_set:
-            grace_period_enabled = payload.grace_period_enabled
-            if grace_period_enabled is None:
-                raise _bad_request("grace_period_enabled must be a boolean")
-            project.grace_period_enabled = grace_period_enabled
-        if "grace_period_percent" in payload.model_fields_set:
-            grace_period_percent = payload.grace_period_percent
-            if grace_period_percent is None or grace_period_percent <= 0:
-                raise _bad_request("grace_period_percent must be a positive integer")
-            project.grace_period_percent = grace_period_percent
+        try:
+            if "slug" in payload.model_fields_set:
+                if payload.slug is None:
+                    raise ValueError("project slug must be non-empty")
+                update_project(session, project, slug=payload.slug)
+            if "name" in payload.model_fields_set:
+                if payload.name is None:
+                    raise ValueError("project name must be non-empty")
+                update_project(session, project, name=payload.name)
+            if "require_peer_review_for_status_changes" in payload.model_fields_set:
+                require_peer_review = payload.require_peer_review_for_status_changes
+                if require_peer_review is None:
+                    raise _bad_request("require_peer_review_for_status_changes must be a boolean")
+                project.require_peer_review_for_status_changes = require_peer_review
+            if "grace_period_enabled" in payload.model_fields_set:
+                grace_period_enabled = payload.grace_period_enabled
+                if grace_period_enabled is None:
+                    raise _bad_request("grace_period_enabled must be a boolean")
+                project.grace_period_enabled = grace_period_enabled
+            if "grace_period_percent" in payload.model_fields_set:
+                grace_period_percent = payload.grace_period_percent
+                if grace_period_percent is None or grace_period_percent <= 0:
+                    raise _bad_request("grace_period_percent must be a positive integer")
+                project.grace_period_percent = grace_period_percent
+        except ValueError as exc:
+            if str(exc) == "project slug or name already exists":
+                raise _project_conflict() from exc
+            raise _bad_request(str(exc)) from exc
+        except IntegrityError as exc:
+            session.rollback()
+            raise _project_conflict() from exc
         if changes:
             record_audit_event(
                 session,
@@ -757,7 +781,7 @@ def _asset_update_changed_fields(payload: AssetUpdateRequest) -> list[str]:
 def _project_update_changes(
     project: Project,
     payload: ProjectUpdateRequest,
-) -> dict[str, dict[str, bool | int]]:
+) -> dict[str, dict[str, bool | int | str]]:
     """Return project setting changes represented as old/new values.
 
     Args:
@@ -768,7 +792,19 @@ def _project_update_changes(
         Mapping of changed project field names to old and new values.
     """
 
-    changes: dict[str, dict[str, bool | int]] = {}
+    changes: dict[str, dict[str, bool | int | str]] = {}
+    if "slug" in payload.model_fields_set and payload.slug != project.slug:
+        changes["slug"] = {
+            "old": project.slug,
+            "new": payload.slug or "",
+        }
+    if "name" in payload.model_fields_set:
+        normalized_name = (payload.name or "").strip()
+        if normalized_name != project.name:
+            changes["name"] = {
+                "old": project.name,
+                "new": normalized_name,
+            }
     if (
         "require_peer_review_for_status_changes" in payload.model_fields_set
         and payload.require_peer_review_for_status_changes

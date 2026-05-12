@@ -18,6 +18,7 @@ from dionysus.inventory.projects import (
     get_project,
     get_project_by_slug,
     list_projects,
+    update_project,
 )
 from dionysus.models.inventory import AssetNode, AssetNodeType
 
@@ -45,6 +46,26 @@ def test_project_lookup_and_listing_are_deterministic(db_session: Session) -> No
     assert get_project(db_session, beta.id) is beta
     assert get_project(db_session, "missing") is None
     assert list_projects(db_session) == [alpha, untitled, beta]
+
+
+def test_update_project_renames_slug_and_name(db_session: Session) -> None:
+    project = create_project(db_session, slug="alpha", name="Alpha")
+
+    update_project(db_session, project, slug="beta", name=" Beta Inventory ")
+
+    assert project.slug == "beta"
+    assert project.name == "Beta Inventory"
+    assert get_project_by_slug(db_session, "beta") is project
+
+
+def test_update_project_rejects_existing_slug_or_name(db_session: Session) -> None:
+    project = create_project(db_session, slug="alpha", name="Alpha")
+    create_project(db_session, slug="beta", name="Beta")
+
+    with pytest.raises(ValueError, match="project slug or name already exists"):
+        update_project(db_session, project, slug="beta")
+    with pytest.raises(ValueError, match="project slug or name already exists"):
+        update_project(db_session, project, name="Beta")
 
 
 @pytest.mark.parametrize(

@@ -281,6 +281,80 @@ def test_inventory_api_project_update_changes_grace_period_settings(engine: Engi
     }
 
 
+def test_inventory_api_project_update_renames_project_and_records_audit_event(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = create_project(session, slug="alpha", name="Alpha")
+            project_id = project.id
+            session.commit()
+        client = _client_with_session_factory(session_factory)
+        _login_user_with_permission(
+            client,
+            session_factory,
+            permission="project:update",
+            scope_type="project",
+            scope_id=project_id,
+        )
+
+        response = client.patch(
+            f"/api/projects/{project_id}",
+            json={"slug": "beta", "name": " Beta Inventory "},
+        )
+        with session_factory() as session:
+            updated_project = session.get(Project, project_id)
+            audit_event = session.scalar(
+                select(AuditLogEvent).where(AuditLogEvent.event_type == "inventory.project.update")
+            )
+
+    assert response.status_code == 200
+    assert response.json()["slug"] == "beta"
+    assert response.json()["name"] == "Beta Inventory"
+    assert updated_project is not None
+    assert updated_project.slug == "beta"
+    assert updated_project.name == "Beta Inventory"
+    assert audit_event is not None
+    assert audit_event.metadata_json == {
+        "changed_fields": ["slug", "name"],
+        "changes": {
+            "slug": {"old": "alpha", "new": "beta"},
+            "name": {"old": "Alpha", "new": "Beta Inventory"},
+        },
+    }
+
+
+def test_inventory_api_project_update_returns_409_for_existing_slug_or_name(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = create_project(session, slug="alpha", name="Alpha")
+            create_project(session, slug="beta", name="Beta")
+            project_id = project.id
+            session.commit()
+        client = _client_with_session_factory(session_factory)
+        _login_user_with_permission(
+            client,
+            session_factory,
+            permission="project:update",
+            scope_type="project",
+            scope_id=project_id,
+        )
+
+        slug_response = client.patch(f"/api/projects/{project_id}", json={"slug": "beta"})
+        name_response = client.patch(f"/api/projects/{project_id}", json={"name": "Beta"})
+
+    assert slug_response.status_code == 409
+    assert slug_response.json() == {"detail": "Project slug or name already exists"}
+    assert name_response.status_code == 409
+    assert name_response.json() == {"detail": "Project slug or name already exists"}
+
+
 def test_inventory_api_assets_returns_authenticated_project_assets(engine: Engine) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)

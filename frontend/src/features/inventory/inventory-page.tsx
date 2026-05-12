@@ -56,6 +56,7 @@ const selectClassName =
 
 type OverrideSelectValue = "inherit" | "enabled" | "disabled"
 type SlaOverrideKind = "tracking" | "reporting"
+type ProjectUpdateIntent = "identity" | "settings"
 
 type AssetTreeRow =
   | {
@@ -769,11 +770,17 @@ function ProjectSettingsSummary({
   onSaved: () => Promise<void>
   project: Project | null
 }) {
+  const [projectSlug, setProjectSlug] = useState("")
+  const [projectName, setProjectName] = useState("")
   const [gracePercent, setGracePercent] = useState("")
+  const [projectUpdateIntent, setProjectUpdateIntent] =
+    useState<ProjectUpdateIntent>("settings")
 
   useEffect(() => {
+    setProjectSlug(project?.slug ?? "")
+    setProjectName(project?.name ?? "")
     setGracePercent(project ? String(project.grace_period_percent) : "")
-  }, [project?.id, project?.grace_period_percent])
+  }, [project?.id, project?.slug, project?.name, project?.grace_period_percent])
 
   const updateProjectMutation = useMutation({
     mutationFn: (payload: UpdateProjectParams) => {
@@ -784,6 +791,10 @@ function ProjectSettingsSummary({
     },
     onSuccess: onSaved,
   })
+  const showProjectIdentityError =
+    projectUpdateIntent === "identity" && updateProjectMutation.isError
+  const showProjectSettingsError =
+    projectUpdateIntent === "settings" && updateProjectMutation.isError
   const deleteProjectMutation = useMutation({
     mutationFn: () => {
       if (!project) {
@@ -814,6 +825,46 @@ function ProjectSettingsSummary({
       {project.description ? (
         <p className="text-sm text-muted-foreground">{project.description}</p>
       ) : null}
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setProjectUpdateIntent("identity")
+          updateProjectMutation.mutate({
+            slug: projectSlug,
+            name: projectName,
+          })
+        }}
+      >
+        {showProjectIdentityError ? (
+          <StateMessage tone="error">{errorMessage(updateProjectMutation.error)}</StateMessage>
+        ) : null}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input
+            aria-label="Project settings slug"
+            onChange={(event) => setProjectSlug(event.target.value)}
+            value={projectSlug}
+          />
+          <Input
+            aria-label="Project settings name"
+            onChange={(event) => setProjectName(event.target.value)}
+            value={projectName}
+          />
+        </div>
+        <Button
+          className="w-fit max-w-full whitespace-normal"
+          disabled={
+            updateProjectMutation.isPending ||
+            (projectSlug === project.slug && projectName === project.name)
+          }
+          size="sm"
+          type="submit"
+          variant="outline"
+        >
+          <Save className="size-4" aria-hidden="true" />
+          Save project identity
+        </Button>
+      </form>
       <dl className="grid gap-3 text-sm">
         <DetailRow
           description="Controls whether findings in this project count toward SLA timing."
@@ -836,12 +887,13 @@ function ProjectSettingsSummary({
             <Button
               className="max-w-full whitespace-normal"
               disabled={updateProjectMutation.isPending}
-              onClick={() =>
+              onClick={() => {
+                setProjectUpdateIntent("settings")
                 updateProjectMutation.mutate({
                   require_peer_review_for_status_changes:
                     !project.require_peer_review_for_status_changes,
                 })
-              }
+              }}
               size="sm"
               type="button"
               variant="outline"
@@ -863,11 +915,12 @@ function ProjectSettingsSummary({
             <Button
               className="max-w-full whitespace-normal"
               disabled={updateProjectMutation.isPending}
-              onClick={() =>
+              onClick={() => {
+                setProjectUpdateIntent("settings")
                 updateProjectMutation.mutate({
                   grace_period_enabled: !project.grace_period_enabled,
                 })
-              }
+              }}
               size="sm"
               type="button"
               variant="outline"
@@ -888,6 +941,7 @@ function ProjectSettingsSummary({
                 gracePercent,
                 project.grace_period_percent,
               )
+              setProjectUpdateIntent("settings")
               updateProjectMutation.mutate({
                 grace_period_enabled: project.grace_period_enabled,
                 grace_period_percent: normalizedGracePercent,
@@ -913,7 +967,7 @@ function ProjectSettingsSummary({
           </form>
         </DetailRow>
       </dl>
-      {updateProjectMutation.isError ? (
+      {showProjectSettingsError ? (
         <StateMessage tone="error">{errorMessage(updateProjectMutation.error)}</StateMessage>
       ) : null}
       {deleteProjectMutation.isError ? (
