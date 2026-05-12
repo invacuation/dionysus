@@ -1,5 +1,6 @@
 import { AlertCircle } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import type { MouseEvent } from "react"
 
 import {
   Card,
@@ -113,6 +114,7 @@ export function OverviewPage() {
                     <a
                       className="rounded-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
                       href={findingSeverityHref(row.severity)}
+                      onClick={handleSpaFindingLinkClick}
                     >
                       {metricLabel(row.count)}
                     </a>
@@ -138,6 +140,7 @@ export function OverviewPage() {
                     className="grid gap-2 rounded-md border px-3 py-2 text-sm sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-3"
                     href={findingProjectHref(project.project_id)}
                     key={project.project_id}
+                    onClick={handleSpaFindingLinkClick}
                   >
                     <span className="font-medium">{project.project_name}</span>
                     <span className="text-muted-foreground">
@@ -155,6 +158,22 @@ export function OverviewPage() {
       </section>
     </div>
   )
+}
+
+function handleSpaFindingLinkClick(event: MouseEvent<HTMLAnchorElement>) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.shiftKey
+  ) {
+    return
+  }
+  event.preventDefault()
+  window.history.pushState({}, "", event.currentTarget.href)
+  window.dispatchEvent(new PopStateEvent("popstate"))
 }
 
 function MetricCard({ label, value }: { label: string; value: number }) {

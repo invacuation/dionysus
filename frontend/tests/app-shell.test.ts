@@ -16,4 +16,10 @@ describe("app shell user summary", () => {
 
     expect(source).not.toContain("{actor.principal_type}")
   })
+
+  test("uses a wide enough desktop sidebar for the system theme label", () => {
+    const source = readFileSync(join(import.meta.dir, "../src/components/app-shell.tsx"), "utf8")
+
+    expect(source).toContain("lg:grid-cols-[17rem_1fr]")
+  })
 })

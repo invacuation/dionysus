@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildActivity,
+  buildCommentsActivity,
+  descriptionForFindingDetail,
   nextFindingTableSort,
   reduceFindingDrawerState,
   sortDirectionForNewFindingColumn,
 } from "../src/features/findings/findings-page"
+import type { FindingDetail } from "../src/lib/api"
 
 describe("reduceFindingDrawerState", () => {
   test("opens a selected finding in an expanded drawer", () => {
@@ -58,5 +62,88 @@ describe("sortDirectionForNewFindingColumn", () => {
     expect(sortDirectionForNewFindingColumn("severity")).toBe("desc")
     expect(sortDirectionForNewFindingColumn("sla_remaining")).toBe("asc")
     expect(sortDirectionForNewFindingColumn("grace_remaining")).toBe("asc")
+  })
+})
+
+describe("descriptionForFindingDetail", () => {
+  test("falls back to hydrated source evidence when the detail description is blank", () => {
+    expect(
+      descriptionForFindingDetail({
+        description: null,
+        source_evidence: {
+          title: "Ubuntu package vulnerability",
+          description: "Hydrated vulnerability description.",
+        },
+      } as FindingDetail),
+    ).toBe("Hydrated vulnerability description.")
+  })
+})
+
+describe("buildActivity", () => {
+  test("includes import and hydration audit entries in the changelog", () => {
+    const activity = buildActivity(
+      [
+        {
+          id: "comment-1",
+          body: "Investigating with platform team.",
+          author_principal_type: "user",
+          author_principal_id: "user-1",
+          author_display: "Alice",
+          created_at: "2026-05-08T12:30:00Z",
+          is_system: false,
+          status_from: null,
+          status_to: null,
+        },
+      ],
+      [],
+      {
+        first_detected_at: "2026-05-08T12:00:00Z",
+        last_seen_at: "2026-05-08T12:05:00Z",
+        references: ["https://nvd.nist.gov/vuln/detail/CVE-2026-1001"],
+        source_evidence: { enrichment: { cve_source_links: ["https://nvd.nist.gov/vuln/detail/CVE-2026-1001"] } },
+      } as FindingDetail,
+    )
+
+    expect(activity.map((item) => item.badge)).toEqual(["Import", "Hydration"])
+  })
+})
+
+describe("buildCommentsActivity", () => {
+  test("keeps comments separate from lifecycle changelog entries", () => {
+    const activity = buildCommentsActivity(
+      [
+        {
+          id: "comment-1",
+          body: "Investigating with platform team.",
+          author_principal_type: "user",
+          author_principal_id: "user-1",
+          author_display: "Alice",
+          created_at: "2026-05-08T12:30:00Z",
+          is_system: false,
+          status_from: null,
+          status_to: null,
+        },
+      ],
+      [
+        {
+          id: "request-1",
+          requester_principal_type: "user",
+          requester_principal_id: "user-2",
+          requester_display: "Bob",
+          reviewer_principal_type: "user",
+          reviewer_principal_id: "user-3",
+          reviewer_display: "Carol",
+          from_status: "open",
+          to_status: "fixed",
+          state: "approved",
+          comment: "Ready to close",
+          decision_comment: "Approved",
+          created_at: "2026-05-08T12:00:00Z",
+          decided_at: "2026-05-08T12:10:00Z",
+        },
+      ],
+    )
+
+    expect(activity.map((item) => item.badge)).toEqual(["Comment"])
   })
 })

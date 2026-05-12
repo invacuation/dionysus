@@ -198,7 +198,7 @@ def create_or_reuse_scan_target(
     session: Session,
     *,
     project: Project,
-    folder: AssetNode,
+    folder: AssetNode | None,
     name: str,
     target_ref: str,
     metadata_json: Mapping[str, Any] | None = None,
@@ -209,7 +209,8 @@ def create_or_reuse_scan_target(
     Args:
         session: The database session used to persist the target.
         project: The project that owns the target.
-        folder: Existing folder node that should contain the target.
+    folder: Existing folder node that should contain the target, or ``None`` for
+        the project root.
         name: The user-facing asset name.
         target_ref: The scanner-facing target reference.
         metadata_json: Optional JSON-compatible import/scanner metadata.
@@ -227,7 +228,7 @@ def create_or_reuse_scan_target(
     if validated_type not in _TARGET_NODE_TYPES:
         raise ValueError("scan target node type must be target-like")
     _validate_parent_project(project, folder)
-    if folder.node_type != AssetNodeType.FOLDER:
+    if folder is not None and folder.node_type != AssetNodeType.FOLDER:
         raise ValueError("import folder must be a folder")
 
     validated_name = _validate_node_name(name)
@@ -238,7 +239,7 @@ def create_or_reuse_scan_target(
     existing_by_ref = session.scalar(
         select(AssetNode).where(
             AssetNode.project_id == project.id,
-            AssetNode.parent_id == folder.id,
+            AssetNode.parent_id == (folder.id if folder is not None else None),
             AssetNode.node_type == validated_type,
             AssetNode.target_ref == normalized_target_ref,
         )
@@ -249,7 +250,7 @@ def create_or_reuse_scan_target(
     existing_by_name = session.scalar(
         select(AssetNode).where(
             AssetNode.project_id == project.id,
-            AssetNode.parent_id == folder.id,
+            AssetNode.parent_id == (folder.id if folder is not None else None),
             AssetNode.name == validated_name,
         )
     )

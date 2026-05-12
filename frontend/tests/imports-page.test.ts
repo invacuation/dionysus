@@ -141,7 +141,7 @@ describe("canUploadReport", () => {
         hasSuccessfulPreview: true,
         isUploading: false,
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 })
 
@@ -232,6 +232,26 @@ describe("pendingImportAsset", () => {
     expect(pendingImportAsset(folder, "", "", preview)).toMatchObject({
       path: "ubuntu/25.10/ubuntu:25.10",
       name: "ubuntu:25.10",
+    })
+  })
+
+  test("previews blank folder imports at the project root", () => {
+    const preview: TrivyImportPreviewResponse = {
+      scanner: "trivy",
+      report_kind: "trivy-image-json",
+      tool_label: "Trivy (Image)",
+      detected_asset_name: "postgres:latest",
+      detected_target_ref: "postgres:latest",
+      scan_started_at: null,
+      finding_count: 12,
+      group_count: 3,
+    }
+
+    expect(pendingImportAsset(null, "latest", "", preview)).toMatchObject({
+      parent_id: null,
+      path: "latest",
+      name: "latest",
+      target_ref: "postgres:latest",
     })
   })
 })

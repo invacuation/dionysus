@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  ArrowUpDown,
   Check,
   ChevronDown,
   ChevronUp,
@@ -26,6 +27,7 @@ import {
   listAccessManagement,
   listAuditLog,
   listMachineCredentials,
+  listProjects,
   listUserSessions,
   regenerateMachineCredentialSecret,
   revokeMachineCredential,
@@ -45,6 +47,7 @@ import {
   type PermissionTestPrincipalType,
   type PermissionTestResponse,
   type PermissionEffect,
+  type Project,
   type SecuritySettings,
   type UserSession,
 } from "@/lib/api"
@@ -76,6 +79,7 @@ type AdminTab =
   | "sessions"
   | "security-settings"
 type CopyStatus = "idle" | "copied" | "failed"
+type SortDirection = "asc" | "desc"
 type SecretPanelState = {
   action: "created" | "regenerated"
   credential: MachineCredentialWithSecret
@@ -118,6 +122,11 @@ type AccessPermissionForm = {
   effect: PermissionEffect
   scopeType: string
   scopeId: string
+}
+
+type AdminSortState<Column extends string> = {
+  column: Column
+  direction: SortDirection
 }
 
 const defaultAccessGroupForm: AccessGroupForm = { name: "", displayName: "" }
@@ -173,6 +182,11 @@ export function AdminPage() {
   const securitySettingsQuery = useQuery({
     queryKey: ["security-settings"],
     queryFn: getSecuritySettings,
+  })
+
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: listProjects,
   })
 
   const invalidateAdminQueries = async () => {
@@ -345,6 +359,7 @@ export function AdminPage() {
           isLoading={accessQuery.isPending}
           onChanged={invalidateAdminQueries}
           onRefresh={() => void accessQuery.refetch()}
+          projects={projectsQuery.data?.projects ?? []}
         />
       ) : activeTab === "import-history" ? (
         <ImportHistorySection
@@ -378,18 +393,6 @@ export function AdminPage() {
               </div>
             </form>
 
-            <div className="flex justify-end self-end">
-              <Button
-                disabled={machineCredentialsQuery.isFetching}
-                onClick={() => void machineCredentialsQuery.refetch()}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <RefreshCw className="size-4" aria-hidden="true" />
-                <span>Refresh</span>
-              </Button>
-            </div>
           </section>
 
           {secretPanel ? (
@@ -464,7 +467,10 @@ export function AdminPage() {
           settings={securitySettingsQuery.data ?? null}
         />
       ) : (
-        <PermissionTesterSection access={accessQuery.data ?? null} />
+        <PermissionTesterSection
+          access={accessQuery.data ?? null}
+          projects={projectsQuery.data?.projects ?? []}
+        />
       )}
     </div>
   )
@@ -718,14 +724,14 @@ function OneTimeSecretPanel({
   secretPanel: SecretPanelState
 }) {
   return (
-    <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+    <section className="rounded-lg border border-primary/30 bg-card p-3 text-foreground shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           <div>
             <h2 className="text-sm font-semibold">
               Secret {secretPanel.action === "created" ? "created" : "regenerated"}
             </h2>
-            <p className="text-xs">
+            <p className="text-xs text-muted-foreground">
               This client secret will not be shown again. Store it before leaving this page.
             </p>
           </div>
@@ -734,7 +740,7 @@ function OneTimeSecretPanel({
             <SecretValue label="Client secret" value={secretPanel.credential.client_secret} />
           </div>
           {copyStatus === "failed" ? (
-            <p className="text-xs">
+            <p className="text-xs text-muted-foreground">
               Copy failed or is unavailable. Select the secret above and copy it manually.
             </p>
           ) : null}
@@ -761,7 +767,7 @@ function SecretValue({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="mb-1 font-medium">{label}</div>
-      <code className="block max-w-full select-all overflow-x-auto rounded-md bg-white/80 px-2 py-1.5 font-mono text-xs">
+      <code className="block max-w-full select-all overflow-x-auto rounded-md border bg-background px-2 py-1.5 font-mono text-xs text-foreground">
         {value}
       </code>
     </div>
@@ -775,6 +781,7 @@ function AccessManagementSection({
   isLoading,
   onChanged,
   onRefresh,
+  projects,
 }: {
   access: AccessListResponse | null
   error: Error | null
@@ -782,6 +789,7 @@ function AccessManagementSection({
   isLoading: boolean
   onChanged: () => Promise<void>
   onRefresh: () => void
+  projects: Project[]
 }) {
   const [groupForm, setGroupForm] = useState<AccessGroupForm>(defaultAccessGroupForm)
   const [membershipForm, setMembershipForm] =
@@ -805,7 +813,7 @@ function AccessManagementSection({
       createAccessMembership({
         group_id: membershipForm.groupId,
         principal_type: membershipForm.principalType,
-        principal_id: membershipForm.principalId.trim(),
+        principal_id: resolvePrincipalId(membershipForm.principalId, membershipPrincipalOptions),
       }),
     onSuccess: async () => {
       setMembershipForm((current) => ({ ...current, principalId: "" }))
@@ -813,7 +821,10 @@ function AccessManagementSection({
     },
   })
   const assignPermissionMutation = useMutation({
-    mutationFn: () => assignAccessPermission(normalizeAccessPermissionForm(permissionForm)),
+    mutationFn: () =>
+      assignAccessPermission(
+        normalizeAccessPermissionForm(permissionForm, projects, permissionPrincipalOptions),
+      ),
     onSuccess: async () => {
       setPermissionForm(defaultAccessPermissionForm)
       await onChanged()
@@ -836,10 +847,23 @@ function AccessManagementSection({
   const canCreateGroup = groupForm.name.trim().length > 0 && groupForm.displayName.trim().length > 0
   const canCreateMembership =
     membershipForm.groupId.length > 0 && membershipForm.principalId.trim().length > 0
-  const normalizedPermission = normalizeAccessPermissionForm(permissionForm)
+  const availablePermissions = access.available_permissions
+  const membershipPrincipalOptions = principalOptionsForAccess(
+    access,
+    membershipForm.principalType,
+  )
+  const permissionPrincipalOptions = principalOptionsForAccess(
+    access,
+    permissionForm.principalType,
+  )
+  const permissionScopeOptions = scopeOptionsForAccess()
+  const normalizedPermission = normalizeAccessPermissionForm(
+    permissionForm,
+    projects,
+    permissionPrincipalOptions,
+  )
   const canAssignPermission =
     normalizedPermission.principal_id.length > 0 && normalizedPermission.permission.length > 0
-  const availablePermissions = access.available_permissions
 
   return (
     <div className="space-y-4">
@@ -926,6 +950,7 @@ function AccessManagementSection({
                     setMembershipForm((current) => ({
                       ...current,
                       principalType: value as AccessPrincipalType,
+                      principalId: "",
                     }))
                   }
                   value={membershipForm.principalType}
@@ -935,16 +960,24 @@ function AccessManagementSection({
                   <option value="group">Group</option>
                 </Select>
               </Field>
-              <Field label="Principal ID">
+              <Field label="Principal">
                 <Input
+                  list="membership-principal-options"
                   onChange={(event) =>
                     setMembershipForm((current) => ({
                       ...current,
                       principalId: event.target.value,
                     }))
                   }
-                  placeholder="principal UUID"
+                  placeholder="Start typing a username or name"
                   value={membershipForm.principalId}
+                />
+                <PrincipalOptionsDatalist
+                  id="membership-principal-options"
+                  options={searchPrincipalOptions(
+                    membershipPrincipalOptions,
+                    membershipForm.principalId,
+                  )}
                 />
               </Field>
               <MutationError error={createMembershipMutation.error} />
@@ -978,6 +1011,7 @@ function AccessManagementSection({
                       setPermissionForm((current) => ({
                         ...current,
                         principalType: value as AccessPrincipalType,
+                        principalId: "",
                       }))
                     }
                     value={permissionForm.principalType}
@@ -1002,16 +1036,24 @@ function AccessManagementSection({
                   </Select>
                 </Field>
               </div>
-              <Field label="Principal ID">
+              <Field label="Principal">
                 <Input
+                  list="permission-principal-options"
                   onChange={(event) =>
                     setPermissionForm((current) => ({
                       ...current,
                       principalId: event.target.value,
                     }))
                   }
-                  placeholder="principal UUID"
+                  placeholder="Start typing a username or name"
                   value={permissionForm.principalId}
+                />
+                <PrincipalOptionsDatalist
+                  id="permission-principal-options"
+                  options={searchPrincipalOptions(
+                    permissionPrincipalOptions,
+                    permissionForm.principalId,
+                  )}
                 />
               </Field>
               <Field label="Permission">
@@ -1031,27 +1073,35 @@ function AccessManagementSection({
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Scope Type">
                   <Input
+                    list="access-scope-type-options"
                     onChange={(event) =>
                       setPermissionForm((current) => ({
                         ...current,
                         scopeType: event.target.value,
+                        scopeId: event.target.value ? current.scopeId : "",
                       }))
                     }
                     placeholder="project"
                     value={permissionForm.scopeType}
                   />
+                  <ScopeTypeDatalist id="access-scope-type-options" options={permissionScopeOptions} />
                 </Field>
-                <Field label="Scope ID">
+                <Field label="Scope">
                   <Input
+                    disabled={!permissionForm.scopeType}
+                    list={permissionForm.scopeType === "project" ? "access-project-scope-options" : undefined}
                     onChange={(event) =>
                       setPermissionForm((current) => ({
                         ...current,
                         scopeId: event.target.value,
                       }))
                     }
-                    placeholder="project UUID"
+                    placeholder={permissionForm.scopeType ? "Project name or ID" : "Unscoped"}
                     value={permissionForm.scopeId}
                   />
+                  {permissionForm.scopeType === "project" ? (
+                    <ProjectScopeDatalist id="access-project-scope-options" projects={projects} />
+                  ) : null}
                 </Field>
               </div>
               <MutationError error={assignPermissionMutation.error} />
@@ -1067,13 +1117,6 @@ function AccessManagementSection({
         </Card>
       </section>
 
-      <div className="flex justify-end">
-        <Button onClick={onRefresh} size="sm" type="button" variant="outline">
-          <RefreshCw className="size-4" aria-hidden="true" />
-          <span>Refresh</span>
-        </Button>
-      </div>
-
       <section className="grid gap-4 xl:grid-cols-2">
         <AccessGroupsCard access={access} />
         <AccessPrincipalsCard access={access} />
@@ -1084,7 +1127,13 @@ function AccessManagementSection({
   )
 }
 
-function PermissionTesterSection({ access }: { access: AccessListResponse | null }) {
+function PermissionTesterSection({
+  access,
+  projects,
+}: {
+  access: AccessListResponse | null
+  projects: Project[]
+}) {
   const [form, setForm] = useState<PermissionTesterForm>(defaultPermissionTesterForm)
   const [result, setResult] = useState<PermissionTestResponse | null>(null)
   const principalOptions = useMemo(
@@ -1092,26 +1141,16 @@ function PermissionTesterSection({ access }: { access: AccessListResponse | null
     [access, form.principalType],
   )
   const availablePermissions = permissionOptionsForAccess(access)
+  const scopeOptions = scopeOptionsForAccess()
   const mutation = useMutation({
     mutationFn: (params: PermissionTestParams) => testPermission(params),
     onSuccess: (response) => setResult(response),
   })
-  const normalized = normalizePermissionTesterForm(form)
+  const normalized = normalizePermissionTesterForm(form, projects, principalOptions)
   const canSubmit =
     normalized.principal_id.length > 0 &&
     normalized.permission.length > 0 &&
     !mutation.isPending
-
-  useEffect(() => {
-    const nextPrincipalId = permissionTesterPrincipalIdForType(
-      form.principalId,
-      principalOptions,
-    )
-    if (nextPrincipalId !== form.principalId) {
-      setForm((current) => ({ ...current, principalId: nextPrincipalId }))
-      setResult(null)
-    }
-  }, [form.principalId, principalOptions])
 
   const updateForm = <Key extends keyof PermissionTesterForm>(
     key: Key,
@@ -1141,10 +1180,7 @@ function PermissionTesterSection({ access }: { access: AccessListResponse | null
               setForm((current) => ({
                 ...current,
                 principalType,
-                principalId: permissionTesterPrincipalIdForType(
-                  "",
-                  permissionTesterPrincipalOptions(access, principalType),
-                ),
+                principalId: "",
               }))
               setResult(null)
             }}
@@ -1156,23 +1192,18 @@ function PermissionTesterSection({ access }: { access: AccessListResponse | null
           </select>
         </Field>
 
-        <Field label="Principal ID">
-          <select
-            className="flex h-9 w-full min-w-0 rounded-md border bg-background px-3 py-1 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+        <Field label="Principal">
+          <Input
             disabled={principalOptions.length === 0}
+            list="permission-tester-principal-options"
             onChange={(event) => updateForm("principalId", event.target.value)}
+            placeholder="Start typing a username or name"
             value={form.principalId}
-          >
-            {principalOptions.length === 0 ? (
-              <option value="">No principals available</option>
-            ) : (
-              principalOptions.map((principal) => (
-                <option key={principal.id} value={principal.id}>
-                  {principal.label}
-                </option>
-              ))
-            )}
-          </select>
+          />
+          <PrincipalOptionsDatalist
+            id="permission-tester-principal-options"
+            options={searchPrincipalOptions(principalOptions, form.principalId)}
+          />
         </Field>
 
         <Field label="Permission">
@@ -1190,18 +1221,30 @@ function PermissionTesterSection({ access }: { access: AccessListResponse | null
 
         <Field label="Scope Type">
           <Input
-            onChange={(event) => updateForm("scopeType", event.target.value)}
+            list="permission-tester-scope-type-options"
+            onChange={(event) => {
+              updateForm("scopeType", event.target.value)
+              if (!event.target.value) {
+                updateForm("scopeId", "")
+              }
+            }}
             placeholder="project"
             value={form.scopeType}
           />
+          <ScopeTypeDatalist id="permission-tester-scope-type-options" options={scopeOptions} />
         </Field>
 
-        <Field label="Scope ID">
+        <Field label="Scope">
           <Input
+            disabled={!form.scopeType}
+            list={form.scopeType === "project" ? "permission-tester-project-scope-options" : undefined}
             onChange={(event) => updateForm("scopeId", event.target.value)}
-            placeholder="project UUID"
+            placeholder={form.scopeType ? "Project name or ID" : "Unscoped"}
             value={form.scopeId}
           />
+          {form.scopeType === "project" ? (
+            <ProjectScopeDatalist id="permission-tester-project-scope-options" projects={projects} />
+          ) : null}
         </Field>
 
         <Button disabled={!canSubmit} size="sm" type="submit">
@@ -1467,6 +1510,19 @@ function AccessMetric({ label, value }: { label: string; value: number }) {
 }
 
 function AccessGroupsCard({ access }: { access: AccessListResponse }) {
+  const [sort, setSort] = useState(() => defaultAdminSortState<"name" | "status" | "members">("name"))
+  const rows = useMemo(
+    () =>
+      [...access.groups].sort((left, right) =>
+        compareAdminValues(
+          groupSortValue(access, left, sort.column),
+          groupSortValue(access, right, sort.column),
+          sort.direction,
+        ),
+      ),
+    [access, sort],
+  )
+
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <div className="border-b px-4 py-3">
@@ -1477,13 +1533,18 @@ function AccessGroupsCard({ access }: { access: AccessListResponse }) {
           <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
             <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
-                <Th>Name</Th>
-                <Th>Status</Th>
-                <Th>Members</Th>
+                <SortableAdminTh
+                  active={sort}
+                  column="name"
+                  label="Name"
+                  onSort={setSort}
+                />
+                <SortableAdminTh active={sort} column="status" label="Status" onSort={setSort} />
+                <SortableAdminTh active={sort} column="members" label="Members" onSort={setSort} />
               </tr>
             </thead>
             <tbody>
-              {access.groups.map((group) => (
+              {rows.map((group) => (
                 <tr className="border-t align-top" key={group.id}>
                   <Td>
                     <div className="font-medium">{group.display_name}</div>
@@ -1526,6 +1587,21 @@ function AccessGroupsCard({ access }: { access: AccessListResponse }) {
 }
 
 function AccessPrincipalsCard({ access }: { access: AccessListResponse }) {
+  const [sort, setSort] = useState(() =>
+    defaultAdminSortState<"principal" | "type" | "status">("principal"),
+  )
+  const rows = useMemo(
+    () =>
+      accessPrincipalRows(access).sort((left, right) =>
+        compareAdminValues(
+          accessPrincipalSortValue(left, sort.column),
+          accessPrincipalSortValue(right, sort.column),
+          sort.direction,
+        ),
+      ),
+    [access, sort],
+  )
+
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <div className="border-b px-4 py-3">
@@ -1536,43 +1612,30 @@ function AccessPrincipalsCard({ access }: { access: AccessListResponse }) {
           <table className="w-full min-w-[48rem] border-collapse text-left text-sm">
             <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
-                <Th>Principal</Th>
-                <Th>Type</Th>
-                <Th>Status</Th>
+                <SortableAdminTh
+                  active={sort}
+                  column="principal"
+                  label="Principal"
+                  onSort={setSort}
+                />
+                <SortableAdminTh active={sort} column="type" label="Type" onSort={setSort} />
+                <SortableAdminTh active={sort} column="status" label="Status" onSort={setSort} />
               </tr>
             </thead>
             <tbody>
-              {access.users.map((user) => (
-                <tr className="border-t align-top" key={`user-${user.id}`}>
+              {rows.map((row) => (
+                <tr className="border-t align-top" key={row.key}>
                   <Td>
-                    <div className="font-medium">{user.display_name}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{user.username}</div>
-                    <div className="mt-1 break-all text-xs text-muted-foreground">{user.id}</div>
+                    <div className="font-medium">{row.primary}</div>
+                    {row.secondary ? (
+                      <div className="mt-1 text-xs text-muted-foreground">{row.secondary}</div>
+                    ) : null}
+                    <div className="mt-1 break-all text-xs text-muted-foreground">{row.id}</div>
                   </Td>
-                  <Td>User</Td>
+                  <Td>{row.typeLabel}</Td>
                   <Td>
-                    <Badge variant={user.is_active ? "default" : "secondary"}>
-                      {user.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </Td>
-                </tr>
-              ))}
-              {access.machine_credentials.map((credential) => (
-                <tr className="border-t align-top" key={`machine-${credential.id}`}>
-                  <Td>
-                    <div className="font-medium">{credential.name}</div>
-                    <div className="mt-1 break-all text-xs text-muted-foreground">
-                      {credential.id}
-                    </div>
-                  </Td>
-                  <Td>Machine</Td>
-                  <Td>
-                    <Badge
-                      variant={
-                        credential.is_active && !credential.revoked_at ? "default" : "secondary"
-                      }
-                    >
-                      {credential.is_active && !credential.revoked_at ? "Active" : "Revoked"}
+                    <Badge variant={row.isActive ? "default" : "secondary"}>
+                      {row.statusLabel}
                     </Badge>
                   </Td>
                 </tr>
@@ -1586,6 +1649,21 @@ function AccessPrincipalsCard({ access }: { access: AccessListResponse }) {
 }
 
 function AccessPermissionsCard({ access }: { access: AccessListResponse }) {
+  const [sort, setSort] = useState(() =>
+    defaultAdminSortState<"principal" | "effect" | "permission" | "scope" | "created">("created"),
+  )
+  const rows = useMemo(
+    () =>
+      [...access.permission_assignments].sort((left, right) =>
+        compareAdminValues(
+          accessPermissionSortValue(access, left, sort.column),
+          accessPermissionSortValue(access, right, sort.column),
+          sort.direction,
+        ),
+      ),
+    [access, sort],
+  )
+
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <div className="border-b px-4 py-3">
@@ -1599,15 +1677,25 @@ function AccessPermissionsCard({ access }: { access: AccessListResponse }) {
             <table className="w-full min-w-[76rem] border-collapse text-left text-sm">
               <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                 <tr>
-                  <Th>Principal</Th>
-                  <Th>Effect</Th>
-                  <Th>Permission</Th>
-                  <Th>Scope</Th>
-                  <Th>Created</Th>
+                  <SortableAdminTh
+                    active={sort}
+                    column="principal"
+                    label="Principal"
+                    onSort={setSort}
+                  />
+                  <SortableAdminTh active={sort} column="effect" label="Effect" onSort={setSort} />
+                  <SortableAdminTh
+                    active={sort}
+                    column="permission"
+                    label="Permission"
+                    onSort={setSort}
+                  />
+                  <SortableAdminTh active={sort} column="scope" label="Scope" onSort={setSort} />
+                  <SortableAdminTh active={sort} column="created" label="Created" onSort={setSort} />
                 </tr>
               </thead>
               <tbody>
-                {access.permission_assignments.map((assignment) => (
+                {rows.map((assignment) => (
                   <tr className="border-t align-top" key={assignment.id}>
                     <Td>
                       <div className="font-medium">
@@ -1771,6 +1859,18 @@ function MachineCredentialsTable({
   onRegenerate: (credential: MachineCredential) => void
   onRevoke: (credential: MachineCredential) => void
 }) {
+  const [sort, setSort] = useState(() =>
+    defaultAdminSortState<
+      | "name"
+      | "clientId"
+      | "status"
+      | "createdBy"
+      | "created"
+      | "updated"
+      | "revoked"
+    >("created"),
+  )
+
   if (isLoading) {
     return <StateMessage label="Loading machine credentials..." />
   }
@@ -1788,22 +1888,31 @@ function MachineCredentialsTable({
     return <StateMessage label="No machine credentials have been created yet." />
   }
 
+  const rows = [...credentials].sort((left, right) =>
+    compareAdminValues(
+      machineCredentialSortValue(left, sort.column),
+      machineCredentialSortValue(right, sort.column),
+      sort.direction,
+    ),
+  )
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[76rem] border-collapse text-left text-sm">
         <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
           <tr>
-            <Th>Name</Th>
-            <Th>Client ID</Th>
-            <Th>Status</Th>
-            <Th>Created</Th>
-            <Th>Updated</Th>
-            <Th>Revoked</Th>
+            <SortableAdminTh active={sort} column="name" label="Name" onSort={setSort} />
+            <SortableAdminTh active={sort} column="clientId" label="Client ID" onSort={setSort} />
+            <SortableAdminTh active={sort} column="status" label="Status" onSort={setSort} />
+            <SortableAdminTh active={sort} column="createdBy" label="Created By" onSort={setSort} />
+            <SortableAdminTh active={sort} column="created" label="Created" onSort={setSort} />
+            <SortableAdminTh active={sort} column="updated" label="Updated" onSort={setSort} />
+            <SortableAdminTh active={sort} column="revoked" label="Revoked" onSort={setSort} />
             <Th>Actions</Th>
           </tr>
         </thead>
         <tbody>
-          {credentials.map((credential) => {
+          {rows.map((credential) => {
             const isActive = credential.is_active && !credential.revoked_at
             const isThisActionPending = isActionPending && actionCredentialId === credential.id
             return (
@@ -1826,6 +1935,21 @@ function MachineCredentialsTable({
                   <Badge variant={isActive ? "default" : "secondary"}>
                     {isActive ? "Active" : "Revoked"}
                   </Badge>
+                </Td>
+                <Td>
+                  <div className="font-medium">
+                    {credential.created_by_display ??
+                      credential.created_by_principal_id ??
+                      "Unknown"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {credential.created_by_principal_type
+                      ? formatPrincipalType(credential.created_by_principal_type)
+                      : "Unknown principal"}
+                    {credential.created_by_principal_id
+                      ? ` (${credential.created_by_principal_id})`
+                      : ""}
+                  </div>
                 </Td>
                 <Td className="whitespace-nowrap text-xs text-muted-foreground">
                   {formatDateTime(credential.created_at)}
@@ -1869,12 +1993,14 @@ function MachineCredentialsTable({
 
 export function normalizePermissionTesterForm(
   form: PermissionTesterForm,
+  projects: Project[] = [],
+  principalOptions: PermissionTesterPrincipalOption[] = [],
 ): PermissionTestParams {
   const scopeType = form.scopeType.trim()
-  const scopeId = form.scopeId.trim()
+  const scopeId = resolveScopeId(scopeType, form.scopeId, projects)
   return {
     principal_type: form.principalType,
-    principal_id: form.principalId.trim(),
+    principal_id: resolvePrincipalId(form.principalId, principalOptions),
     permission: form.permission.trim(),
     scope_type: scopeType && scopeId ? scopeType : null,
     scope_id: scopeType && scopeId ? scopeId : null,
@@ -1884,6 +2010,44 @@ export function normalizePermissionTesterForm(
 type PermissionTesterPrincipalOption = {
   id: string
   label: string
+}
+
+type ScopeOption = {
+  label: string
+  scopeType: string
+  value: string
+}
+
+type AccessPrincipalRow = {
+  id: string
+  isActive: boolean
+  key: string
+  primary: string
+  secondary: string | null
+  statusLabel: string
+  typeLabel: string
+}
+
+export function principalOptionsForAccess(
+  access: AccessListResponse | null,
+  principalType: AccessPrincipalType,
+): PermissionTesterPrincipalOption[] {
+  return permissionTesterPrincipalOptions(access, principalType)
+}
+
+export function searchPrincipalOptions(
+  options: PermissionTesterPrincipalOption[],
+  query: string,
+): PermissionTesterPrincipalOption[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) {
+    return options
+  }
+  return options.filter(
+    (option) =>
+      option.label.toLocaleLowerCase().includes(normalizedQuery) ||
+      option.id.toLocaleLowerCase().includes(normalizedQuery),
+  )
 }
 
 export function permissionTesterPrincipalOptions(
@@ -1925,6 +2089,13 @@ export function permissionOptionsForAccess(access: AccessListResponse | null): s
   return access?.available_permissions ?? []
 }
 
+export function scopeOptionsForAccess(): ScopeOption[] {
+  return [
+    { label: "Unscoped", scopeType: "", value: "" },
+    { label: "Project", scopeType: "project", value: "project" },
+  ]
+}
+
 export function normalizeSecuritySettingsForm(
   currentSettings: SecuritySettings,
   form: SecuritySettingsForm,
@@ -1963,12 +2134,14 @@ function positiveIntegerOrFallback(value: string, fallback: number): number {
 
 export function normalizeAccessPermissionForm(
   form: AccessPermissionForm,
+  projects: Project[] = [],
+  principalOptions: PermissionTesterPrincipalOption[] = [],
 ): AssignAccessPermissionParams {
   const scopeType = form.scopeType.trim()
-  const scopeId = form.scopeId.trim()
+  const scopeId = resolveScopeId(scopeType, form.scopeId, projects)
   return {
     principal_type: form.principalType,
-    principal_id: form.principalId.trim(),
+    principal_id: resolvePrincipalId(form.principalId, principalOptions),
     permission: form.permission.trim(),
     effect: form.effect,
     scope_type: scopeType && scopeId ? scopeType : null,
@@ -2106,6 +2279,189 @@ function normalizeSearchTerm(value: string): string {
   return value.trim().toLocaleLowerCase()
 }
 
+function resolvePrincipalId(
+  value: string,
+  options: PermissionTesterPrincipalOption[],
+): string {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ""
+  }
+  const idMatch = options.find((option) => option.id === trimmed)
+  if (idMatch) {
+    return idMatch.id
+  }
+  return uniqueMatch(
+    options,
+    (option) => option.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
+  )?.id ?? trimmed
+}
+
+function resolveScopeId(scopeType: string, value: string, projects: Project[]): string {
+  const trimmed = value.trim()
+  if (!trimmed || scopeType !== "project") {
+    return trimmed
+  }
+  const idMatch = projects.find((project) => project.id === trimmed)
+  if (idMatch) {
+    return idMatch.id
+  }
+  return uniqueMatch(
+    projects,
+    (project) =>
+      project.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase() ||
+      project.slug.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
+  )?.id ?? trimmed
+}
+
+function uniqueMatch<Item>(items: Item[], predicate: (item: Item) => boolean): Item | null {
+  let match: Item | null = null
+  for (const item of items) {
+    if (!predicate(item)) {
+      continue
+    }
+    if (match) {
+      return null
+    }
+    match = item
+  }
+  return match
+}
+
+export function defaultAdminSortState<Column extends string>(
+  column: Column,
+): AdminSortState<Column> {
+  return { column, direction: "asc" }
+}
+
+export function nextAdminSortState<Column extends string>(
+  current: AdminSortState<Column>,
+  column: Column,
+): AdminSortState<Column> {
+  if (current.column !== column) {
+    return { column, direction: "asc" }
+  }
+  return { column, direction: current.direction === "asc" ? "desc" : "asc" }
+}
+
+function compareAdminValues(
+  left: boolean | number | string | null | undefined,
+  right: boolean | number | string | null | undefined,
+  direction: SortDirection,
+): number {
+  const multiplier = direction === "asc" ? 1 : -1
+  const normalizedLeft = typeof left === "boolean" ? Number(left) : left ?? ""
+  const normalizedRight = typeof right === "boolean" ? Number(right) : right ?? ""
+  if (typeof normalizedLeft === "number" && typeof normalizedRight === "number") {
+    return (normalizedLeft - normalizedRight) * multiplier
+  }
+  return String(normalizedLeft).localeCompare(String(normalizedRight)) * multiplier
+}
+
+function groupSortValue(
+  access: AccessListResponse,
+  group: AccessListResponse["groups"][number],
+  column: "members" | "name" | "status",
+): number | string {
+  if (column === "members") {
+    return membershipsForGroup(access, group.id).length
+  }
+  if (column === "status") {
+    return group.is_protected ? "protected" : "custom"
+  }
+  return `${group.display_name} ${group.name}`
+}
+
+function accessPrincipalRows(access: AccessListResponse): AccessPrincipalRow[] {
+  return [
+    ...access.users.map((user) => ({
+      id: user.id,
+      isActive: user.is_active,
+      key: `user-${user.id}`,
+      primary: user.display_name,
+      secondary: user.username,
+      statusLabel: user.is_active ? "Active" : "Inactive",
+      typeLabel: "User",
+    })),
+    ...access.machine_credentials.map((credential) => ({
+      id: credential.id,
+      isActive: credential.is_active && !credential.revoked_at,
+      key: `machine-${credential.id}`,
+      primary: credential.name,
+      secondary: null,
+      statusLabel: credential.is_active && !credential.revoked_at ? "Active" : "Revoked",
+      typeLabel: "Machine",
+    })),
+  ]
+}
+
+function accessPrincipalSortValue(
+  row: AccessPrincipalRow,
+  column: "principal" | "status" | "type",
+): string {
+  if (column === "status") {
+    return row.statusLabel
+  }
+  if (column === "type") {
+    return row.typeLabel
+  }
+  return `${row.primary} ${row.secondary ?? ""}`
+}
+
+function accessPermissionSortValue(
+  access: AccessListResponse,
+  assignment: AccessListResponse["permission_assignments"][number],
+  column: "created" | "effect" | "permission" | "principal" | "scope",
+): string {
+  if (column === "created") {
+    return assignment.created_at
+  }
+  if (column === "effect") {
+    return assignment.effect
+  }
+  if (column === "permission") {
+    return assignment.permission
+  }
+  if (column === "scope") {
+    return assignment.scope_type && assignment.scope_id
+      ? `${assignment.scope_type}:${assignment.scope_id}`
+      : "Unscoped"
+  }
+  return principalDisplayLabel(access, assignment.principal_type, assignment.principal_id)
+}
+
+function machineCredentialSortValue(
+  credential: MachineCredential,
+  column:
+    | "clientId"
+    | "created"
+    | "createdBy"
+    | "name"
+    | "revoked"
+    | "status"
+    | "updated",
+): string {
+  if (column === "clientId") {
+    return credential.client_id
+  }
+  if (column === "created") {
+    return credential.created_at
+  }
+  if (column === "createdBy") {
+    return credential.created_by_display ?? credential.created_by_principal_id ?? ""
+  }
+  if (column === "revoked") {
+    return credential.revoked_at ?? ""
+  }
+  if (column === "status") {
+    return credential.is_active && !credential.revoked_at ? "active" : "revoked"
+  }
+  if (column === "updated") {
+    return credential.updated_at
+  }
+  return credential.name
+}
+
 function Field({ children, label }: { children: React.ReactNode; label: string }) {
   return (
     <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
@@ -2126,6 +2482,44 @@ function PermissionOptionsDatalist({
     <datalist id={id}>
       {permissions.map((permission) => (
         <option key={permission} value={permission} />
+      ))}
+    </datalist>
+  )
+}
+
+function PrincipalOptionsDatalist({
+  id,
+  options,
+}: {
+  id: string
+  options: PermissionTesterPrincipalOption[]
+}) {
+  return (
+    <datalist id={id}>
+      {options.map((option) => (
+        <option key={option.id} label={option.label} value={option.id} />
+      ))}
+    </datalist>
+  )
+}
+
+function ScopeTypeDatalist({ id, options }: { id: string; options: ScopeOption[] }) {
+  return (
+    <datalist id={id}>
+      {options
+        .filter((option) => option.scopeType)
+        .map((option) => (
+          <option key={`${option.scopeType}:${option.value}`} value={option.value} />
+        ))}
+    </datalist>
+  )
+}
+
+function ProjectScopeDatalist({ id, projects }: { id: string; projects: Project[] }) {
+  return (
+    <datalist id={id}>
+      {projects.map((project) => (
+        <option key={project.id} label={`${project.name} (${project.slug})`} value={project.id} />
       ))}
     </datalist>
   )
@@ -2430,6 +2824,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-4 py-2 font-medium">{children}</th>
+}
+
+function SortableAdminTh<Column extends string>({
+  active,
+  column,
+  label,
+  onSort,
+}: {
+  active: AdminSortState<Column>
+  column: Column
+  label: string
+  onSort: React.Dispatch<React.SetStateAction<AdminSortState<Column>>>
+}) {
+  const isActive = active.column === column
+  return (
+    <th className="px-4 py-2 font-medium">
+      <button
+        className="inline-flex items-center gap-1 rounded-sm outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        onClick={() => onSort((current) => nextAdminSortState(current, column))}
+        type="button"
+      >
+        <span>{label}</span>
+        {isActive ? (
+          active.direction === "asc" ? (
+            <ChevronUp className="size-3" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-3" aria-hidden="true" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 text-muted-foreground/70" aria-hidden="true" />
+        )}
+      </button>
+    </th>
+  )
 }
 
 function Td({

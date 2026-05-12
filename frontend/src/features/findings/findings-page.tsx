@@ -249,7 +249,6 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="text-base">Inventory</CardTitle>
-              <CardDescription>{scopeLabel}</CardDescription>
             </div>
             <Button
               disabled={isDefaultInventoryScope(inventoryScope)}
@@ -1282,7 +1281,8 @@ function DetailPanel({
     statusTarget !== detail.status &&
     (!requiresReason || trimmedReason.length > 0) &&
     !statusMutation.isPending
-  const activity = buildActivity(detail.comments, detail.status_change_requests)
+  const commentActivity = buildCommentsActivity(detail.comments, detail.status_change_requests)
+  const activity = buildActivity(detail.comments, detail.status_change_requests, detail)
 
   return (
     <CardContent className="space-y-5 p-5 text-sm">
@@ -1291,7 +1291,7 @@ function DetailPanel({
         <DetailTerm label="Status" value={formatStatus(detail.status)} />
         <DetailTerm label="Installed" value={emptyFallback(detail.installed_version)} />
         <DetailTerm label="Fixed" value={emptyFallback(detail.fixed_version)} />
-        <DetailTerm label="SLA" value={daysLabel(detail.sla_remaining_days)} />
+        <DetailTerm label="Vulnerability SLA" value={daysLabel(detail.sla_remaining_days)} />
         <DetailTerm label="Grace" value={daysLabel(detail.grace_remaining_days)} />
       </dl>
 
@@ -1299,7 +1299,7 @@ function DetailPanel({
         <div className="space-y-2 rounded-md border bg-muted/40 p-3">
           <p className="text-muted-foreground">Description</p>
           <p className="whitespace-pre-wrap break-words">
-            {emptyFallback(detail.description)}
+            {emptyFallback(descriptionForFindingDetail(detail))}
           </p>
         </div>
         <div className="space-y-2 rounded-md border bg-muted/40 p-3">
@@ -1333,13 +1333,13 @@ function DetailPanel({
       </DetailSection>
 
       <DetailSection title="Comments / Activity">
-        {activity.length === 0 ? (
+        {commentActivity.length === 0 ? (
           <p className="rounded-md border bg-muted/30 p-3 text-muted-foreground">
-            No comments or status activity yet.
+            No comments yet.
           </p>
         ) : (
           <ol className="space-y-2">
-            {activity.map((item) => (
+            {commentActivity.map((item) => (
               <li className="rounded-md border bg-muted/30 p-3" key={item.id}>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">{item.actor}</span>
@@ -1468,6 +1468,34 @@ function DetailPanel({
           </div>
         </form>
       </DetailSection>
+
+      <DetailSection title="Vulnerability Changelog">
+        {activity.length === 0 ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-muted-foreground">
+            No lifecycle events yet.
+          </p>
+        ) : (
+          <ol className="space-y-2">
+            {activity.map((item) => (
+              <li className="rounded-md border bg-muted/30 p-3" key={`log-${item.id}`}>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{item.actor}</span>
+                  {item.badge ? <Badge variant="outline">{item.badge}</Badge> : null}
+                  <span>{formatDateTime(item.createdAt)}</span>
+                </div>
+                {item.transition ? (
+                  <div className="mt-1 text-xs font-medium">
+                    {formatStatus(item.transition.from)} {"->"} {formatStatus(item.transition.to)}
+                  </div>
+                ) : null}
+                {item.body ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words">{item.body}</p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </DetailSection>
     </CardContent>
   )
 }
@@ -1484,9 +1512,10 @@ type ActivityItem = {
   transition: { from: FindingStatus; to: FindingStatus } | null
 }
 
-function buildActivity(
+export function buildActivity(
   comments: FindingComment[],
   requests: FindingStatusChangeRequest[],
+  detail?: FindingDetail,
 ): ActivityItem[] {
   const pairedCommentIds = new Set<string>()
   const requestActivity = requests.map((request): ActivityItem => {
@@ -1519,31 +1548,111 @@ function buildActivity(
     }
   })
 
+  const lifecycleActivity = detail ? findingLifecycleActivity(detail) : []
+  return [
+    ...lifecycleActivity,
+    ...requestActivity,
+  ].sort(compareByCreatedAt)
+}
+
+export function buildCommentsActivity(
+  comments: FindingComment[],
+  requests: FindingStatusChangeRequest[],
+): ActivityItem[] {
+  const pairedCommentIds = new Set<string>()
+  for (const request of requests) {
+    const pairedComment = comments.find((comment) =>
+      isMatchingStatusRequestComment(comment, request, pairedCommentIds),
+    )
+    if (pairedComment) {
+      pairedCommentIds.add(pairedComment.id)
+    }
+  }
+
   return [
     ...comments
-      .filter((comment) => !pairedCommentIds.has(comment.id))
+      .filter(
+        (comment) =>
+          !pairedCommentIds.has(comment.id) &&
+          !comment.is_system &&
+          !(comment.status_from && comment.status_to),
+      )
       .map((comment): ActivityItem => ({
         id: `comment-${comment.id}`,
-        actor: comment.is_system
-          ? "System"
-          : displayPrincipalLabel(
-              comment.author_display,
-              comment.author_principal_type,
-              comment.author_principal_id,
-            ),
-        badge: comment.is_system ? "System" : "Comment",
+        actor: displayPrincipalLabel(
+          comment.author_display,
+          comment.author_principal_type,
+          comment.author_principal_id,
+        ),
+        badge: "Comment",
         body: comment.body || null,
         createdAt: comment.created_at,
         decisionActor: null,
         decisionBody: null,
         request: null,
-        transition:
-          comment.status_from && comment.status_to
-            ? { from: comment.status_from, to: comment.status_to }
-            : null,
+        transition: null,
       })),
-    ...requestActivity,
   ].sort(compareByCreatedAt)
+}
+
+function findingLifecycleActivity(detail: FindingDetail): ActivityItem[] {
+  const activity: ActivityItem[] = [
+    {
+      id: `import-${detail.id}`,
+      actor: "System",
+      badge: "Import",
+      body: "Finding imported from scanner report.",
+      createdAt: detail.first_detected_at,
+      decisionActor: null,
+      decisionBody: null,
+      request: null,
+      transition: null,
+    },
+  ]
+  const enrichmentLinks = enrichmentReferenceCount(detail)
+  if (enrichmentLinks > 0) {
+    activity.push({
+      id: `hydration-${detail.id}`,
+      actor: "System",
+      badge: "Hydration",
+      body: `Hydrated vulnerability evidence with ${enrichmentLinks} reference${enrichmentLinks === 1 ? "" : "s"}.`,
+      createdAt: detail.last_seen_at,
+      decisionActor: null,
+      decisionBody: null,
+      request: null,
+      transition: null,
+    })
+  }
+  return activity
+}
+
+function enrichmentReferenceCount(detail: FindingDetail): number {
+  const enrichment = detail.source_evidence.enrichment
+  if (
+    enrichment &&
+    typeof enrichment === "object" &&
+    "cve_source_links" in enrichment &&
+    Array.isArray(enrichment.cve_source_links)
+  ) {
+    return enrichment.cve_source_links.length
+  }
+  return 0
+}
+
+export function descriptionForFindingDetail(detail: FindingDetail): string | null {
+  const directDescription = detail.description?.trim()
+  if (directDescription) {
+    return directDescription
+  }
+  const sourceDescription = detail.source_evidence.description
+  if (typeof sourceDescription === "string" && sourceDescription.trim()) {
+    return sourceDescription.trim()
+  }
+  const sourceTitle = detail.source_evidence.title
+  if (typeof sourceTitle === "string" && sourceTitle.trim()) {
+    return sourceTitle.trim()
+  }
+  return null
 }
 
 function StatusRequestReviewForm({

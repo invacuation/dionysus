@@ -4,15 +4,19 @@ import {
   actorLabel,
   actorPrincipalLabel,
   auditLogParams,
+  defaultAdminSortState,
   filterAuditLogEvents,
   formatAuditMetadataForDisplay,
   importUploaderLabel,
+  nextAdminSortState,
   normalizeAccessPermissionForm,
   normalizePermissionTesterForm,
   permissionOptionsForAccess,
-  permissionTesterPrincipalIdForType,
+  principalOptionsForAccess,
+  searchPrincipalOptions,
   permissionTesterPrincipalOptions,
   normalizeSecuritySettingsForm,
+  scopeOptionsForAccess,
 } from "../src/features/admin/admin-page"
 import type { AccessListResponse, AdminImportAttempt, AuditLogEntry } from "../src/lib/api"
 
@@ -67,6 +71,9 @@ const accessList: AccessListResponse = {
       name: "ci-runner",
       client_id: "client-1",
       is_active: true,
+      created_by_principal_type: "user",
+      created_by_principal_id: "user-1",
+      created_by_display: "Alice Admin",
       created_at: "2026-05-08T12:00:00Z",
       updated_at: "2026-05-08T12:00:00Z",
       revoked_at: null,
@@ -125,6 +132,51 @@ describe("filterAuditLogEvents", () => {
     expect(filterAuditLogEvents(events, { actor: "", target: "manual-upload" })).toEqual([
       events[1],
     ])
+  })
+})
+
+describe("principalOptionsForAccess", () => {
+  test("uses display names for access assignment controls", () => {
+    expect(principalOptionsForAccess(accessList, "user")).toEqual([
+      { id: "user-1", label: "Alice Admin (alice)" },
+    ])
+    expect(principalOptionsForAccess(accessList, "machine")).toEqual([
+      { id: "credential-1", label: "ci-runner" },
+    ])
+    expect(principalOptionsForAccess(accessList, "group")).toEqual([
+      { id: "group-1", label: "Security" },
+    ])
+  })
+})
+
+describe("searchPrincipalOptions", () => {
+  test("filters typeahead principal matches by display labels", () => {
+    const options = principalOptionsForAccess(accessList, "user")
+
+    expect(searchPrincipalOptions(options, "alice")).toEqual(options)
+    expect(searchPrincipalOptions(options, "admin")).toEqual(options)
+    expect(searchPrincipalOptions(options, "missing")).toEqual([])
+  })
+})
+
+describe("scopeOptionsForAccess", () => {
+  test("always offers unscoped and project scope types without raw UUID wording", () => {
+    expect(scopeOptionsForAccess()).toEqual([
+      { label: "Unscoped", scopeType: "", value: "" },
+      { label: "Project", scopeType: "project", value: "project" },
+    ])
+  })
+})
+
+describe("nextAdminSortState", () => {
+  test("activates a new column and toggles direction on repeat clicks", () => {
+    const initial = defaultAdminSortState("name")
+
+    expect(nextAdminSortState(initial, "type")).toEqual({ column: "type", direction: "asc" })
+    expect(nextAdminSortState({ column: "type", direction: "asc" }, "type")).toEqual({
+      column: "type",
+      direction: "desc",
+    })
   })
 })
 
@@ -193,12 +245,15 @@ describe("normalizeAccessPermissionForm", () => {
     expect(
       normalizeAccessPermissionForm({
         principalType: "group",
-        principalId: " group-1 ",
+        principalId: " Security ",
         permission: " import:upload ",
         effect: "allow",
         scopeType: " project ",
-        scopeId: " project-1 ",
-      }),
+        scopeId: " Alpha ",
+      }, [
+        { id: "project-1", slug: "alpha", name: "Alpha", description: null, sla_tracking_enabled: true, sla_reporting_enabled: true, require_peer_review_for_status_changes: false, grace_period_enabled: false, grace_period_percent: 100, critical_sla_days: 30, high_sla_days: 60, medium_sla_days: 90, low_sla_days: 180, unknown_sla_days: 365, created_at: "2026-05-08T12:00:00Z", updated_at: "2026-05-08T12:00:00Z" }],
+        principalOptionsForAccess(accessList, "group"),
+      ),
     ).toEqual({
       principal_type: "group",
       principal_id: "group-1",
@@ -226,6 +281,85 @@ describe("normalizeAccessPermissionForm", () => {
       effect: "deny",
       scope_type: null,
       scope_id: null,
+    })
+  })
+
+  test("does not resolve duplicate principal labels to the first matching id", () => {
+    expect(
+      normalizeAccessPermissionForm(
+        {
+          principalType: "group",
+          principalId: "Security",
+          permission: "import:upload",
+          effect: "allow",
+          scopeType: "",
+          scopeId: "",
+        },
+        [],
+        [
+          { id: "group-1", label: "Security" },
+          { id: "group-2", label: "Security" },
+        ],
+      ),
+    ).toMatchObject({
+      principal_id: "Security",
+    })
+  })
+
+  test("does not resolve duplicate project names to the first matching scope id", () => {
+    const duplicateProjects = [
+      {
+        id: "project-1",
+        slug: "alpha-1",
+        name: "Alpha",
+        description: null,
+        sla_tracking_enabled: true,
+        sla_reporting_enabled: true,
+        require_peer_review_for_status_changes: false,
+        grace_period_enabled: false,
+        grace_period_percent: 100,
+        critical_sla_days: 30,
+        high_sla_days: 60,
+        medium_sla_days: 90,
+        low_sla_days: 180,
+        unknown_sla_days: 365,
+        created_at: "2026-05-08T12:00:00Z",
+        updated_at: "2026-05-08T12:00:00Z",
+      },
+      {
+        id: "project-2",
+        slug: "alpha-2",
+        name: "Alpha",
+        description: null,
+        sla_tracking_enabled: true,
+        sla_reporting_enabled: true,
+        require_peer_review_for_status_changes: false,
+        grace_period_enabled: false,
+        grace_period_percent: 100,
+        critical_sla_days: 30,
+        high_sla_days: 60,
+        medium_sla_days: 90,
+        low_sla_days: 180,
+        unknown_sla_days: 365,
+        created_at: "2026-05-08T12:00:00Z",
+        updated_at: "2026-05-08T12:00:00Z",
+      },
+    ]
+
+    expect(
+      normalizeAccessPermissionForm(
+        {
+          principalType: "group",
+          principalId: "group-1",
+          permission: "import:upload",
+          effect: "allow",
+          scopeType: "project",
+          scopeId: "Alpha",
+        },
+        duplicateProjects,
+      ),
+    ).toMatchObject({
+      scope_id: "Alpha",
     })
   })
 })
@@ -289,11 +423,14 @@ describe("normalizePermissionTesterForm", () => {
     expect(
       normalizePermissionTesterForm({
         principalType: "user",
-        principalId: " user-1 ",
+        principalId: " Alice Admin (alice) ",
         permission: " finding:view ",
         scopeType: " project ",
-        scopeId: " project-1 ",
-      }),
+        scopeId: " Alpha ",
+      }, [
+        { id: "project-1", slug: "alpha", name: "Alpha", description: null, sla_tracking_enabled: true, sla_reporting_enabled: true, require_peer_review_for_status_changes: false, grace_period_enabled: false, grace_period_percent: 100, critical_sla_days: 30, high_sla_days: 60, medium_sla_days: 90, low_sla_days: 180, unknown_sla_days: 365, created_at: "2026-05-08T12:00:00Z", updated_at: "2026-05-08T12:00:00Z" }],
+        principalOptionsForAccess(accessList, "user"),
+      ),
     ).toEqual({
       principal_type: "user",
       principal_id: "user-1",
@@ -333,14 +470,6 @@ describe("permission tester principal selection", () => {
     expect(permissionTesterPrincipalOptions(accessList, "group")).toEqual([
       { id: "group-1", label: "Security" },
     ])
-  })
-
-  test("keeps valid principal ids and otherwise selects the first option", () => {
-    const options = permissionTesterPrincipalOptions(accessList, "user")
-
-    expect(permissionTesterPrincipalIdForType("user-1", options)).toBe("user-1")
-    expect(permissionTesterPrincipalIdForType("missing-user", options)).toBe("user-1")
-    expect(permissionTesterPrincipalIdForType("missing-user", [])).toBe("")
   })
 })
 
@@ -425,5 +554,18 @@ describe("machine credential token revocation UI", () => {
     expect(source).not.toContain("Revoke active tokens for this credential")
     expect(source).not.toContain("Applies when regenerating a secret or revoking a credential.")
     expect(source).not.toContain("Revoke existing tokens")
+  })
+
+  test("does not show a standalone refresh button and keeps the secret panel dark-mode friendly", async () => {
+    const { readFile } = await import("node:fs/promises")
+    const { join } = await import("node:path")
+    const source = await readFile(
+      join(import.meta.dir, "../src/features/admin/admin-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).not.toContain("Refresh machine credential list")
+    expect(source).not.toContain("bg-amber-50")
+    expect(source).not.toContain("text-amber-950")
   })
 })

@@ -26,7 +26,10 @@ export function ThemeModeToggle({ className, mode, onModeChange }: ThemeModeTogg
   return (
     <div
       aria-label="Color theme"
-      className={cn("inline-grid grid-cols-3 gap-1 rounded-md border bg-background p-1", className)}
+      className={cn(
+        "grid w-full min-w-0 grid-cols-3 gap-1 overflow-hidden rounded-md border bg-background p-1",
+        className,
+      )}
       role="group"
     >
       {themeModes.map((themeMode) => {
@@ -37,7 +40,7 @@ export function ThemeModeToggle({ className, mode, onModeChange }: ThemeModeTogg
           <Button
             aria-pressed={isSelected}
             className={cn(
-              "h-8 gap-1.5 px-2 text-xs",
+              "h-8 min-w-0 justify-center gap-1 overflow-hidden px-1 text-[11px]",
               isSelected && "bg-accent text-accent-foreground",
             )}
             key={themeMode}
@@ -47,8 +50,8 @@ export function ThemeModeToggle({ className, mode, onModeChange }: ThemeModeTogg
             type="button"
             variant="ghost"
           >
-            <Icon className="size-4" aria-hidden="true" />
-            <span>{themeModeLabels[themeMode]}</span>
+            <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">{themeModeLabels[themeMode]}</span>
           </Button>
         )
       })}
