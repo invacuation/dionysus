@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 RELEASE_WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "release.yml"
 
 
