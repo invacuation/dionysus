@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/invacuation/dionysus/compare/v0.4.3...v0.5.0) (2026-05-12)
+
+
+### Features
+
+* allow projects to be renamed ([#34](https://github.com/invacuation/dionysus/issues/34)) ([24d1b91](https://github.com/invacuation/dionysus/commit/24d1b9144afb405a12794c54950dd346ecccdaf9))
+
+
+### Bug Fixes
+
+* address admin and findings review feedback ([#31](https://github.com/invacuation/dionysus/issues/31)) ([2635f2e](https://github.com/invacuation/dionysus/commit/2635f2ee70cd4a1f8ce9d167086fd3ef1b45374e))
+
 ## [0.4.3](https://github.com/invacuation/dionysus/compare/v0.4.2...v0.4.3) (2026-05-11)
 
 
