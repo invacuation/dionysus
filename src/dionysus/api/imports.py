@@ -311,9 +311,17 @@ def _import_trivy_with_binding(
             uploader_principal_id=uploader_principal_id,
             scan_started_at=scan_started_at,
         )
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Provide scan_target_id, folder_id, or folder_path",
+    return import_trivy_report_for_asset(
+        session,
+        project=project,
+        folder=None,
+        payload=payload,
+        now=now,
+        asset_name=_blank_to_none(asset_name),
+        target_ref=_blank_to_none(target_ref),
+        uploader_principal_type=uploader_principal_type,
+        uploader_principal_id=uploader_principal_id,
+        scan_started_at=scan_started_at,
     )
 
 

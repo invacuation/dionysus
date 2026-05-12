@@ -23,6 +23,29 @@ from dionysus.models.identity import (
 
 router = APIRouter(prefix="/api/admin/access", tags=["access-management"])
 access_manage_actor_dependency = Depends(require_permission("access:manage"))
+PROTECTED_GROUPS = {
+    "administrators": "Administrators",
+    "users": "Users",
+    "security-reviewers": "Security Reviewers",
+}
+PROTECTED_GROUP_PERMISSIONS = {
+    "users": (
+        "finding:comment",
+        "finding:status_change:request",
+        "finding:view",
+        "project:view",
+        "report:view",
+    ),
+    "security-reviewers": (
+        "finding:comment",
+        "finding:status_change:approve",
+        "finding:status_change:request",
+        "finding:view",
+        "import:history:view",
+        "project:view",
+        "report:view",
+    ),
+}
 
 
 class UserAccessResponse(BaseModel):
@@ -159,6 +182,7 @@ def access_list_api(
 
     session_factory = request.app.state.session_factory
     with session_factory() as session:
+        _ensure_protected_groups(session)
         users = session.scalars(select(User).order_by(User.username)).all()
         credentials = session.scalars(
             select(MachineCredential).order_by(MachineCredential.created_at)
@@ -170,6 +194,7 @@ def access_list_api(
         assignments = session.scalars(
             select(PermissionAssignment).order_by(PermissionAssignment.created_at)
         ).all()
+        session.commit()
         return AccessListResponse(
             users=[_user_response(user) for user in users],
             machine_credentials=[
@@ -182,6 +207,33 @@ def access_list_api(
             ],
             available_permissions=list(KNOWN_PERMISSIONS),
         )
+
+
+def _ensure_protected_groups(session: Session) -> None:
+    existing = {
+        group.name: group
+        for group in session.scalars(select(Group).where(Group.name.in_(PROTECTED_GROUPS))).all()
+    }
+    for name, display_name in PROTECTED_GROUPS.items():
+        group = existing.get(name)
+        if group is None:
+            group = Group(name=name, display_name=display_name, is_protected=True)
+            session.add(group)
+            session.flush()
+        else:
+            group.display_name = display_name
+            group.is_protected = True
+        for permission in PROTECTED_GROUP_PERMISSIONS.get(name, ()):
+            assign_permission(
+                session,
+                principal_type=PrincipalType.GROUP,
+                principal_id=group.id,
+                permission=permission,
+                effect=PermissionEffect.ALLOW,
+                scope_type=None,
+                scope_id=None,
+            )
+    session.flush()
 
 
 @router.post(

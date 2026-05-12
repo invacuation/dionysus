@@ -121,6 +121,9 @@ def _assert_safe_credential(body: dict[str, object]) -> None:
         "name",
         "client_id",
         "is_active",
+        "created_by_principal_type",
+        "created_by_principal_id",
+        "created_by_display",
         "created_at",
         "updated_at",
         "revoked_at",
@@ -157,6 +160,8 @@ def test_machine_credentials_create_returns_secret_once_and_list_is_safe(engine:
     assert len(credentials) == 1
     assert credentials[0]["id"] == created["id"]
     assert credentials[0]["name"] == "ci-runner"
+    assert credentials[0]["created_by_principal_type"] == "user"
+    assert credentials[0]["created_by_display"] == "Alice"
     _assert_safe_credential(credentials[0])
 
 

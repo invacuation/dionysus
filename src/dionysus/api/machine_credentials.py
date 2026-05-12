@@ -15,6 +15,7 @@ from dionysus.identity.machines import (
     regenerate_machine_client_secret,
     revoke_machine_credential,
 )
+from dionysus.models import AuditLogEvent
 from dionysus.models.identity import MachineCredential
 
 router = APIRouter(prefix="/api/admin/machine-credentials", tags=["machine-credentials"])
@@ -46,6 +47,9 @@ class MachineCredentialResponse(BaseModel):
     name: str
     client_id: str
     is_active: bool
+    created_by_principal_type: str | None
+    created_by_principal_id: str | None
+    created_by_display: str | None
     created_at: datetime
     updated_at: datetime
     revoked_at: datetime | None
@@ -88,8 +92,18 @@ def machine_credentials_list_api(
         credentials = session.scalars(
             select(MachineCredential).order_by(MachineCredential.created_at)
         ).all()
+        creator_events = _credential_creator_events(
+            session,
+            [credential.id for credential in credentials],
+        )
         return MachineCredentialListResponse(
-            credentials=[_credential_response(credential) for credential in credentials]
+            credentials=[
+                _credential_response(
+                    credential,
+                    creator_event=creator_events.get(credential.id),
+                )
+                for credential in credentials
+            ]
         )
 
 
@@ -239,12 +253,23 @@ def machine_credential_revoke_api(
         return _credential_response(credential)
 
 
-def _credential_response(credential: MachineCredential) -> MachineCredentialResponse:
+def _credential_response(
+    credential: MachineCredential,
+    *,
+    creator_event: AuditLogEvent | None = None,
+) -> MachineCredentialResponse:
     return MachineCredentialResponse(
         id=credential.id,
         name=credential.name,
         client_id=credential.client_id,
         is_active=credential.is_active,
+        created_by_principal_type=(
+            creator_event.actor_principal_type if creator_event is not None else None
+        ),
+        created_by_principal_id=(
+            creator_event.actor_principal_id if creator_event is not None else None
+        ),
+        created_by_display=creator_event.actor_display if creator_event is not None else None,
         created_at=_as_utc(credential.created_at),
         updated_at=_as_utc(credential.updated_at),
         revoked_at=_as_utc(credential.revoked_at) if credential.revoked_at else None,
@@ -259,6 +284,27 @@ def _credential_with_secret_response(
         **_credential_response(credential).model_dump(),
         client_secret=raw_secret,
     )
+
+
+def _credential_creator_events(
+    session,
+    credential_ids: list[str],
+) -> dict[str, AuditLogEvent]:
+    if not credential_ids:
+        return {}
+    events = session.scalars(
+        select(AuditLogEvent)
+        .where(
+            AuditLogEvent.event_type == "machine_credential.create",
+            AuditLogEvent.target_type == "machine_credential",
+            AuditLogEvent.target_id.in_(credential_ids),
+        )
+        .order_by(AuditLogEvent.created_at)
+    ).all()
+    creators: dict[str, AuditLogEvent] = {}
+    for event in events:
+        creators.setdefault(event.target_id, event)
+    return creators
 
 
 def _get_credential_or_404(session, credential_id: str) -> MachineCredential:

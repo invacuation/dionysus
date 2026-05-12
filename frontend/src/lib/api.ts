@@ -113,6 +113,9 @@ export type MachineCredential = {
   name: string
   client_id: string
   is_active: boolean
+  created_by_principal_type: string | null
+  created_by_principal_id: string | null
+  created_by_display: string | null
   created_at: string
   updated_at: string
   revoked_at: string | null

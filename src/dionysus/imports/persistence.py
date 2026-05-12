@@ -344,7 +344,7 @@ def import_trivy_report_for_asset(
     session: Session,
     *,
     project: Project,
-    folder: AssetNode,
+    folder: AssetNode | None,
     payload: bytes | str,
     now: datetime,
     asset_name: str | None = None,
@@ -359,7 +359,8 @@ def import_trivy_report_for_asset(
     Args:
         session: SQLAlchemy session used by the caller.
         project: Existing project that owns the import.
-        folder: Existing folder where the scanned asset should live.
+        folder: Existing folder where the scanned asset should live, or ``None``
+            to place it at the project root.
         payload: Raw Trivy report content. It is parsed but not stored.
         now: Import timestamp used for detection fields.
         asset_name: Optional user-facing asset name, falling back to report target.

@@ -592,6 +592,43 @@ def test_api_trivy_import_accepts_folder_path_and_creates_missing_folders(
             assert created_target.target_ref == "registry.example.test/dionysus/api:2026.05.07"
 
 
+def test_api_trivy_import_accepts_blank_folder_path_as_project_root(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        user_id = _create_user(session_factory)
+        with session_factory() as session:
+            project_id, _target_id, _folder_id = _project_inventory(session)
+            session.commit()
+        _grant_permission(
+            session_factory,
+            principal_type=PrincipalType.USER,
+            principal_id=user_id,
+            permission="import:upload",
+            scope_type="project",
+            scope_id=project_id,
+        )
+        client = _client_with_session_factory(session_factory)
+        client.cookies.set(SESSION_COOKIE, _create_session_cookie(session_factory, user_id))
+
+        response = _post_trivy_import_to_folder(
+            client,
+            project_id=project_id,
+            folder_path=" ",
+            asset_name="Root Image",
+            target_ref=None,
+        )
+
+        assert response.status_code == 200
+        with session_factory() as session:
+            created_target = session.get_one(AssetNode, response.json()["scan_target_id"])
+            assert created_target.parent_id is None
+            assert created_target.path == "Root Image"
+            assert created_target.target_ref == "registry.example.test/dionysus/api:2026.05.07"
+
+
 def test_api_trivy_import_accepts_bearer_authenticated_upload(engine: Engine) -> None:
     with engine.connect() as connection:
         Base.metadata.create_all(connection)

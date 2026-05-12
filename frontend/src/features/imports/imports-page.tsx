@@ -108,7 +108,7 @@ export function ImportsPage() {
 
   function uploadReport() {
     const normalizedFolderPath = normalizeImportFolderPath(folderPath)
-    if (!selectedFile || !selectedProjectId || !normalizedFolderPath) {
+    if (!selectedFile || !selectedProjectId) {
       return
     }
     importMutation.mutate({
@@ -162,7 +162,7 @@ export function ImportsPage() {
             <div>
               <CardTitle className="text-base">Upload Report</CardTitle>
               <CardDescription>
-                Bind the report to a project folder path before importing.
+                Bind the report to a project, optionally under a folder path.
               </CardDescription>
             </div>
             <SupportedReportsHelp />
@@ -416,7 +416,7 @@ function SelectedFolderSummary({
   if (!normalizedFolderPath) {
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-        Enter a folder path to preview where the imported asset will be created.
+        Imports without a folder path will be placed at the project root.
       </div>
     )
   }
@@ -760,7 +760,6 @@ export function datetimeLocalFromIso(value: string | null | undefined): string {
 
 export function canUploadReport({
   file,
-  folderPath,
   hasProject,
   hasSuccessfulPreview,
   isUploading,
@@ -773,7 +772,6 @@ export function canUploadReport({
 }): boolean {
   return (
     hasProject &&
-    normalizeImportFolderPath(folderPath).length > 0 &&
     file !== null &&
     hasSuccessfulPreview &&
     !isUploading
@@ -786,15 +784,16 @@ export function pendingImportAsset(
   targetRef: string,
   preview: TrivyImportPreviewResponse | null,
 ): Asset | null {
-  if (!selectedFolder || !preview) {
+  if (!preview) {
     return null
   }
   const resolvedName = assetName.trim() || preview.detected_asset_name || "Detected asset"
   const resolvedTargetRef = targetRef.trim() || preview.detected_target_ref || null
+  const parentPath = selectedFolder?.path ?? ""
   return {
     id: pendingImportAssetId,
-    parent_id: selectedFolder.id,
-    path: `${selectedFolder.path}/${resolvedName}`,
+    parent_id: selectedFolder?.id ?? null,
+    path: parentPath ? `${parentPath}/${resolvedName}` : resolvedName,
     type: scanTargetType,
     name: resolvedName,
     target_ref: resolvedTargetRef,
@@ -804,6 +803,7 @@ export function pendingImportAsset(
     sort_order: Number.MAX_SAFE_INTEGER,
   }
 }
+
 
 function pendingImportFolderId(path: string): string {
   return `${pendingImportFolderIdPrefix}${path}`

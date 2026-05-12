@@ -919,7 +919,10 @@ def _additional_identifiers(finding: RawFindingInstance) -> list[str]:
 
 def _source_description(source: dict[str, Any]) -> str | None:
     description = source.get("description")
-    return description if isinstance(description, str) and description else None
+    if isinstance(description, str) and description.strip():
+        return description.strip()
+    title = source.get("title")
+    return title.strip() if isinstance(title, str) and title.strip() else None
 
 
 def _as_utc(value: datetime) -> datetime:

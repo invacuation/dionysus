@@ -139,7 +139,15 @@ def test_access_api_lists_safe_identity_data(engine: Engine) -> None:
     body = response.json()
     assert {user["id"] for user in body["users"]} == {user_id}
     assert {credential["id"] for credential in body["machine_credentials"]} == {machine_id}
-    assert {group["name"] for group in body["groups"]} == {"administrators", "triage"}
+    assert {group["name"] for group in body["groups"]} == {
+        "administrators",
+        "security-reviewers",
+        "triage",
+        "users",
+    }
+    assert {
+        group["name"] for group in body["groups"] if group["is_protected"]
+    } == {"administrators", "security-reviewers", "users"}
     assert body["memberships"][0]["principal_type"] == "machine"
     assert body["permission_assignments"][0]["permission"] == "access:manage"
     assert "finding:view" in body["available_permissions"]
@@ -149,6 +157,36 @@ def test_access_api_lists_safe_identity_data(engine: Engine) -> None:
     assert "client_secret" not in serialized
     assert "client_secret_digest" not in serialized
     assert "token_digest" not in serialized
+
+
+def test_access_api_seeds_permissions_for_protected_groups(engine: Engine) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory)
+        client = _client_with_session_factory(session_factory)
+        _login(client)
+
+        response = client.get(ADMIN_ACCESS_URL)
+
+    assert response.status_code == 200
+    assignments = response.json()["permission_assignments"]
+    by_group = {}
+    for assignment in assignments:
+        by_group.setdefault(assignment["principal_id"], set()).add(assignment["permission"])
+
+    body = response.json()
+    groups = {group["name"]: group["id"] for group in body["groups"]}
+    assert by_group[groups["users"]] >= {"finding:comment", "finding:view", "project:view"}
+    assert by_group[groups["security-reviewers"]] >= {
+        "finding:comment",
+        "finding:status_change:approve",
+        "finding:status_change:request",
+        "finding:view",
+        "import:history:view",
+        "project:view",
+        "report:view",
+    }
 
 
 def test_access_api_creates_custom_group_and_rejects_duplicate(engine: Engine) -> None:
