@@ -2287,11 +2287,14 @@ function resolvePrincipalId(
   if (!trimmed) {
     return ""
   }
-  const match = options.find(
-    (option) =>
-      option.id === trimmed || option.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
-  )
-  return match?.id ?? trimmed
+  const idMatch = options.find((option) => option.id === trimmed)
+  if (idMatch) {
+    return idMatch.id
+  }
+  return uniqueMatch(
+    options,
+    (option) => option.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
+  )?.id ?? trimmed
 }
 
 function resolveScopeId(scopeType: string, value: string, projects: Project[]): string {
@@ -2299,13 +2302,30 @@ function resolveScopeId(scopeType: string, value: string, projects: Project[]): 
   if (!trimmed || scopeType !== "project") {
     return trimmed
   }
-  const match = projects.find(
+  const idMatch = projects.find((project) => project.id === trimmed)
+  if (idMatch) {
+    return idMatch.id
+  }
+  return uniqueMatch(
+    projects,
     (project) =>
-      project.id === trimmed ||
       project.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase() ||
       project.slug.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
-  )
-  return match?.id ?? trimmed
+  )?.id ?? trimmed
+}
+
+function uniqueMatch<Item>(items: Item[], predicate: (item: Item) => boolean): Item | null {
+  let match: Item | null = null
+  for (const item of items) {
+    if (!predicate(item)) {
+      continue
+    }
+    if (match) {
+      return null
+    }
+    match = item
+  }
+  return match
 }
 
 export function defaultAdminSortState<Column extends string>(
@@ -2477,7 +2497,7 @@ function PrincipalOptionsDatalist({
   return (
     <datalist id={id}>
       {options.map((option) => (
-        <option key={option.id} value={option.label} />
+        <option key={option.id} label={option.label} value={option.id} />
       ))}
     </datalist>
   )
@@ -2499,7 +2519,7 @@ function ProjectScopeDatalist({ id, projects }: { id: string; projects: Project[
   return (
     <datalist id={id}>
       {projects.map((project) => (
-        <option key={project.id} value={project.name} />
+        <option key={project.id} label={`${project.name} (${project.slug})`} value={project.id} />
       ))}
     </datalist>
   )

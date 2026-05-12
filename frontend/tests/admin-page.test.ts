@@ -283,6 +283,85 @@ describe("normalizeAccessPermissionForm", () => {
       scope_id: null,
     })
   })
+
+  test("does not resolve duplicate principal labels to the first matching id", () => {
+    expect(
+      normalizeAccessPermissionForm(
+        {
+          principalType: "group",
+          principalId: "Security",
+          permission: "import:upload",
+          effect: "allow",
+          scopeType: "",
+          scopeId: "",
+        },
+        [],
+        [
+          { id: "group-1", label: "Security" },
+          { id: "group-2", label: "Security" },
+        ],
+      ),
+    ).toMatchObject({
+      principal_id: "Security",
+    })
+  })
+
+  test("does not resolve duplicate project names to the first matching scope id", () => {
+    const duplicateProjects = [
+      {
+        id: "project-1",
+        slug: "alpha-1",
+        name: "Alpha",
+        description: null,
+        sla_tracking_enabled: true,
+        sla_reporting_enabled: true,
+        require_peer_review_for_status_changes: false,
+        grace_period_enabled: false,
+        grace_period_percent: 100,
+        critical_sla_days: 30,
+        high_sla_days: 60,
+        medium_sla_days: 90,
+        low_sla_days: 180,
+        unknown_sla_days: 365,
+        created_at: "2026-05-08T12:00:00Z",
+        updated_at: "2026-05-08T12:00:00Z",
+      },
+      {
+        id: "project-2",
+        slug: "alpha-2",
+        name: "Alpha",
+        description: null,
+        sla_tracking_enabled: true,
+        sla_reporting_enabled: true,
+        require_peer_review_for_status_changes: false,
+        grace_period_enabled: false,
+        grace_period_percent: 100,
+        critical_sla_days: 30,
+        high_sla_days: 60,
+        medium_sla_days: 90,
+        low_sla_days: 180,
+        unknown_sla_days: 365,
+        created_at: "2026-05-08T12:00:00Z",
+        updated_at: "2026-05-08T12:00:00Z",
+      },
+    ]
+
+    expect(
+      normalizeAccessPermissionForm(
+        {
+          principalType: "group",
+          principalId: "group-1",
+          permission: "import:upload",
+          effect: "allow",
+          scopeType: "project",
+          scopeId: "Alpha",
+        },
+        duplicateProjects,
+      ),
+    ).toMatchObject({
+      scope_id: "Alpha",
+    })
+  })
 })
 
 describe("importUploaderLabel", () => {

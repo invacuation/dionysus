@@ -1,9 +1,12 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+import dionysus.api.access as access_api
 from conftest import create_prepared_test_app
 from dionysus.identity.machines import create_machine_credential
 from dionysus.identity.permissions import assign_permission
@@ -145,9 +148,11 @@ def test_access_api_lists_safe_identity_data(engine: Engine) -> None:
         "triage",
         "users",
     }
-    assert {
-        group["name"] for group in body["groups"] if group["is_protected"]
-    } == {"administrators", "security-reviewers", "users"}
+    assert {group["name"] for group in body["groups"] if group["is_protected"]} == {
+        "administrators",
+        "security-reviewers",
+        "users",
+    }
     assert body["memberships"][0]["principal_type"] == "machine"
     assert body["permission_assignments"][0]["permission"] == "access:manage"
     assert "finding:view" in body["available_permissions"]
@@ -186,6 +191,74 @@ def test_access_api_seeds_permissions_for_protected_groups(engine: Engine) -> No
         "import:history:view",
         "project:view",
         "report:view",
+    }
+
+
+def test_access_api_handles_racing_protected_group_seed(
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory)
+
+        original_create = access_api._create_protected_group
+        original_lookup = access_api._protected_group_by_name
+        create_calls = 0
+        lookup_calls = 0
+
+        def hide_then_return_racing_group(session: Session, name: str) -> Group | None:
+            nonlocal lookup_calls
+            lookup_calls += 1
+            if name != "administrators":
+                return original_lookup(session, name)
+            if lookup_calls == 1:
+                return None
+            group = original_lookup(session, name)
+            if group is None:
+                group = Group(
+                    name="administrators",
+                    display_name="Administrators",
+                    is_protected=True,
+                )
+                session.add(group)
+                session.flush()
+            return group
+
+        def raise_integrity_error_once(
+            session: Session,
+            *,
+            name: str,
+            display_name: str,
+        ) -> Group:
+            nonlocal create_calls
+            create_calls += 1
+            if name == "administrators":
+                raise IntegrityError("insert group", {}, Exception("duplicate key"))
+            return original_create(session, name=name, display_name=display_name)
+
+        monkeypatch.setattr(
+            access_api,
+            "_protected_group_by_name",
+            hide_then_return_racing_group,
+        )
+        monkeypatch.setattr(
+            access_api,
+            "_create_protected_group",
+            raise_integrity_error_once,
+        )
+        client = _client_with_session_factory(session_factory)
+        _login(client)
+
+        response = client.get(ADMIN_ACCESS_URL)
+
+    assert response.status_code == 200
+    assert create_calls >= 1
+    assert {group["name"] for group in response.json()["groups"]} >= {
+        "administrators",
+        "security-reviewers",
+        "users",
     }
 
 
