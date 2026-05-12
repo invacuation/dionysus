@@ -5,6 +5,7 @@ import {
   datetimeLocalFromIso,
   folderForImportPath,
   folderOptionsForImport,
+  importFormDefaultsFromPreview,
   importCompleteMessage,
   importsWorkspaceDescription,
   pendingImportAsset,
@@ -73,7 +74,8 @@ describe("toolFeedbackForReportFile", () => {
       scanner: "trivy",
       report_kind: "trivy-image-json",
       tool_label: "Trivy (Image)",
-      detected_asset_name: "ubuntu:25.10",
+      detected_project_name: "ubuntu",
+      detected_asset_name: "25.10",
       detected_target_ref: "ubuntu:25.10",
       scan_started_at: null,
       finding_count: 12,
@@ -214,7 +216,8 @@ describe("pendingImportAsset", () => {
       scanner: "trivy",
       report_kind: "trivy-image-json",
       tool_label: "Trivy (Image)",
-      detected_asset_name: "ubuntu:25.10",
+      detected_project_name: "ubuntu",
+      detected_asset_name: "25.10",
       detected_target_ref: "ubuntu:25.10",
       scan_started_at: null,
       finding_count: 12,
@@ -230,8 +233,72 @@ describe("pendingImportAsset", () => {
       type: "scan_target",
     })
     expect(pendingImportAsset(folder, "", "", preview)).toMatchObject({
-      path: "ubuntu/25.10/ubuntu:25.10",
-      name: "ubuntu:25.10",
+      path: "ubuntu/25.10/25.10",
+      name: "25.10",
+    })
+  })
+})
+
+describe("importFormDefaultsFromPreview", () => {
+  test("pre-fills blank import fields from detected Trivy image metadata", () => {
+    const preview: TrivyImportPreviewResponse = {
+      scanner: "trivy",
+      report_kind: "trivy-image-json",
+      tool_label: "Trivy (Image)",
+      detected_project_name: "ubuntu",
+      detected_asset_name: "24.04",
+      detected_target_ref: "ubuntu:24.04",
+      scan_started_at: null,
+      finding_count: 12,
+      group_count: 3,
+    }
+
+    expect(
+      importFormDefaultsFromPreview(
+        {
+          folderPath: "",
+          assetName: "",
+          targetRef: "",
+          scanStartedAt: "",
+        },
+        preview,
+      ),
+    ).toEqual({
+      folderPath: "ubuntu",
+      assetName: "24.04",
+      targetRef: "ubuntu:24.04",
+      scanStartedAt: "",
+    })
+  })
+
+  test("keeps user-entered import fields when preview completes", () => {
+    const preview: TrivyImportPreviewResponse = {
+      scanner: "trivy",
+      report_kind: "trivy-image-json",
+      tool_label: "Trivy (Image)",
+      detected_project_name: "ubuntu",
+      detected_asset_name: "24.04",
+      detected_target_ref: "ubuntu:24.04",
+      scan_started_at: "2026-05-07T12:34:56Z",
+      finding_count: 12,
+      group_count: 3,
+    }
+
+    expect(
+      importFormDefaultsFromPreview(
+        {
+          folderPath: "custom/project",
+          assetName: "custom-asset",
+          targetRef: "custom-ref",
+          scanStartedAt: "2026-05-01T10:00",
+        },
+        preview,
+      ),
+    ).toEqual({
+      folderPath: "custom/project",
+      assetName: "custom-asset",
+      targetRef: "custom-ref",
+      scanStartedAt: "2026-05-01T10:00",
     })
   })
 

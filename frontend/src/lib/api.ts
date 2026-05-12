@@ -508,6 +508,7 @@ export type TrivyImportPreviewResponse = {
   scanner: string
   report_kind: string
   tool_label: string
+  detected_project_name: string | null
   detected_asset_name: string | null
   detected_target_ref: string | null
   scan_started_at: string | null
