@@ -1,6 +1,7 @@
 import {
   approveFindingStatusRequest,
   assignAccessPermission,
+  changeCurrentUserPassword,
   createAccessGroup,
   createAccessMembership,
   createFindingComment,
@@ -19,6 +20,7 @@ import {
   rejectFindingStatusRequest,
   revokeMachineCredential,
   revokeUserSession,
+  setAccessUserPassword,
   testPermission,
   updateAsset,
   updateFindingStatus,
@@ -28,6 +30,7 @@ import {
   type AccessListResponse,
   type AccessMembership,
   type AccessPermissionAssignment,
+  type ActorMetadata,
   type AdminImportAttempt,
   type AdminImportHistoryResponse,
   type Asset,
@@ -135,6 +138,24 @@ const permissionTest: Promise<PermissionTestResponse> = testPermission({
   scope_type: "project",
   scope_id: "project-1",
 })
+const currentActor: ActorMetadata = {
+  actor_type: "user",
+  actor_id: "user-1",
+  display_name: "Alice",
+  principal_type: "user",
+  principal_id: "user-1",
+  auth_method: "session",
+  session_id: "session-1",
+  machine_token_id: null,
+  mixed_credentials_present: false,
+  bearer_token_present: false,
+  session_cookie_present: true,
+  local_auth_enabled: true,
+}
+const changedCurrentUserPassword: Promise<void> = changeCurrentUserPassword({
+  current_password: "correct horse battery staple",
+  new_password: "new correct horse battery",
+})
 const accessList: Promise<AccessListResponse> = listAccessManagement()
 const accessGroup: AccessGroup = {
   id: "group-1",
@@ -160,6 +181,9 @@ const accessPermission: Promise<AccessPermissionAssignment> = assignAccessPermis
   effect: "allow",
   scope_type: "project",
   scope_id: "project-1",
+})
+const changedAccessUserPassword: Promise<void> = setAccessUserPassword("user-1", {
+  new_password: "new correct horse battery",
 })
 const adminImportAttempt: AdminImportAttempt = {
   id: "attempt-1",
@@ -276,11 +300,14 @@ void createdMachineCredential
 void regeneratedMachineCredentialSecret
 void revokedMachineCredential
 void permissionTest
+void currentActor
+void changedCurrentUserPassword
 void accessList
 void accessGroup
 void createdAccessGroup
 void accessMembership
 void accessPermission
+void changedAccessUserPassword
 void adminImportAttempt
 void adminImportHistory
 void adminImportUploaderLabel
