@@ -13,37 +13,25 @@ jobs:
     if: github.actor != 'github-actions[bot]' && github.repository == 'invacuation/dionysus'
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: write
       issues: write
       pull-requests: write
     steps:
+      - name: check release token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "Configure the RELEASE_PLEASE_TOKEN secret so Release Please PRs trigger CI."
+            exit 1
+          fi
+
       # googleapis/release-please-action@v4
       - id: release
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
         with:
+          # Use a PAT or GitHub App token so Release Please PRs trigger
+          # pull_request workflows. GITHUB_TOKEN-created PRs do not.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      - name: read release pull request metadata
-        if: steps.release.outputs.prs_created == 'true'
-        id: release-pr
-        env:
-          RELEASE_PR: ${{ steps.release.outputs.pr }}
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-
-          pr = json.loads(os.environ["RELEASE_PR"])
-          print(f"head_branch={pr['headBranchName']}")
-          print(f"title={pr['title']}")
-          PY
-
-      - name: trigger CI for release pull request
-        if: steps.release.outputs.prs_created == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_BRANCH: ${{ steps.release-pr.outputs.head_branch }}
-          PR_TITLE: ${{ steps.release-pr.outputs.title }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_BRANCH" -f pr_title="$PR_TITLE"
