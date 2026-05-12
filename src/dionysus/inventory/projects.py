@@ -2,7 +2,7 @@
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from dionysus.models.inventory import Project
@@ -59,6 +59,40 @@ def create_project(
         grace_period_percent=grace_period_percent,
     )
     session.add(project)
+    session.flush()
+    return project
+
+
+def update_project(
+    session: Session,
+    project: Project,
+    *,
+    slug: str | None = None,
+    name: str | None = None,
+) -> Project:
+    """Update mutable project identity fields and flush the project.
+
+    Args:
+        session: The database session used to persist the project.
+        project: The project to mutate.
+        slug: Optional replacement project slug.
+        name: Optional replacement human-readable project name.
+
+    Returns:
+        The flushed project model.
+
+    Raises:
+        ValueError: If the slug or name is invalid or already used by another project.
+    """
+
+    if slug is not None:
+        validated_slug = _validate_slug(slug)
+        _ensure_unique_project_identity(session, project, slug=validated_slug)
+        project.slug = validated_slug
+    if name is not None:
+        validated_name = _validate_name(name)
+        _ensure_unique_project_identity(session, project, name=validated_name)
+        project.name = validated_name
     session.flush()
     return project
 
@@ -129,3 +163,25 @@ def _validate_name(name: str) -> str:
     if not normalized:
         raise ValueError("project name must be non-empty")
     return normalized
+
+
+def _ensure_unique_project_identity(
+    session: Session,
+    project: Project,
+    *,
+    slug: str | None = None,
+    name: str | None = None,
+) -> None:
+    conflict_filters = []
+    if slug is not None and slug != project.slug:
+        conflict_filters.append(Project.slug == slug)
+    if name is not None and name != project.name:
+        conflict_filters.append(Project.name == name)
+    if not conflict_filters:
+        return
+
+    conflict = session.scalar(
+        select(Project).where(Project.id != project.id).where(or_(*conflict_filters))
+    )
+    if conflict is not None:
+        raise ValueError("project slug or name already exists")
