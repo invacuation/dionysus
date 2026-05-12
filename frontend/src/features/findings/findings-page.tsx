@@ -186,6 +186,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
     [assets, assetSearch, currentFolderId],
   )
   const scopeLabel = inventoryScopeLabel(inventoryScope, projects, assets)
+  const inventorySummaryLabel = inventoryScopeSummaryLabel(inventoryScope, projects, assets)
 
   const findingsQuery = useQuery({
     queryKey: ["findings", params],
@@ -249,7 +250,9 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="text-base">Inventory</CardTitle>
-              <CardDescription>{scopeLabel}</CardDescription>
+              {inventorySummaryLabel ? (
+                <CardDescription>{inventorySummaryLabel}</CardDescription>
+              ) : null}
             </div>
             <Button
               disabled={isDefaultInventoryScope(inventoryScope)}
@@ -544,6 +547,14 @@ export function inventoryScopeLabel(
   }
   const asset = assets.find((candidate) => candidate.id === scope.assetId)
   return asset ? `${projectName} / ${assetNameBreadcrumb(asset, assets).join(" / ")}` : projectName
+}
+
+export function inventoryScopeSummaryLabel(
+  scope: FindingInventoryScope,
+  projects: Project[],
+  assets: Asset[],
+): string {
+  return scope.projectId ? inventoryScopeLabel(scope, projects, assets) : ""
 }
 
 function assetNameBreadcrumb(asset: Asset, assets: Asset[]): string[] {

@@ -11,6 +11,7 @@ import {
   findingInventoryScopeFromSearchParams,
   findingParams,
   inventoryScopeLabel,
+  inventoryScopeSummaryLabel,
   resultLabel,
   type FindingInventoryScope,
 } from "../src/features/findings/findings-page"
@@ -143,6 +144,21 @@ describe("inventoryScopeLabel", () => {
         image,
       ]),
     ).toBe("Alpha / ubuntu / 25.10 / ubuntu:25.10")
+  })
+})
+
+describe("inventoryScopeSummaryLabel", () => {
+  test("omits the entire-inventory wording from the inventory card", () => {
+    const alpha = project({ name: "Alpha", slug: "alpha" })
+    const api = asset({ name: "API", path: "root/api" })
+
+    expect(inventoryScopeSummaryLabel({ assetId: "", projectId: "" }, [alpha], [])).toBe("")
+    expect(inventoryScopeSummaryLabel({ assetId: "", projectId: alpha.id }, [alpha], [api])).toBe(
+      "Alpha",
+    )
+    expect(
+      inventoryScopeSummaryLabel({ assetId: api.id, projectId: alpha.id }, [alpha], [api]),
+    ).toBe("Alpha / API")
   })
 })
 

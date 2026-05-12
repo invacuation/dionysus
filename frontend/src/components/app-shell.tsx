@@ -52,7 +52,7 @@ export function AppShell({
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen lg:grid-cols-[16rem_1fr]">
+      <div className="grid min-h-screen lg:grid-cols-[17rem_1fr]">
         <aside className="border-b bg-card px-4 py-4 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
           <div>
             <a className="block text-lg font-semibold tracking-normal" href="/">
