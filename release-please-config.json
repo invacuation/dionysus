@@ -16,7 +16,7 @@
         {
           "type": "toml",
           "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"dionysus\")].version"
+          "jsonpath": "$.package[?(@.name.value==\"dionysus\")].version"
         }
       ]
     }
