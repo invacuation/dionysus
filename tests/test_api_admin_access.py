@@ -19,6 +19,7 @@ from dionysus.models import (
     PermissionAssignment,
     PermissionEffect,
     PrincipalType,
+    User,
 )
 
 ADMIN_ACCESS_URL = "/api/admin/access"
@@ -399,6 +400,97 @@ def test_access_api_assigns_allow_and_deny_scoped_permissions(engine: Engine) ->
     assert deny_response.json()["effect"] == "deny"
     assert [assignment.effect for assignment in assignments] == ["allow", "deny"]
     assert [event.metadata_json["effect"] for event in audit_events] == ["allow", "deny"]
+
+
+def test_access_api_admin_creates_local_user_and_audits(engine: Engine) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory, username="admin", permission="access:manage")
+        client = _client_with_session_factory(session_factory)
+        _login(client, username="admin")
+
+        response = client.post(
+            f"{ADMIN_ACCESS_URL}/users",
+            json={
+                "username": " bob@example.com ",
+                "display_name": " Bob Builder ",
+                "password": "new correct horse battery",
+            },
+        )
+        with session_factory() as session:
+            user = session.scalar(select(User).where(User.username == "bob@example.com"))
+            authenticated_user = authenticate_user(
+                session,
+                "bob@example.com",
+                "new correct horse battery",
+            )
+            audit_event = session.scalar(
+                select(AuditLogEvent).where(AuditLogEvent.event_type == "access.user.create")
+            )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["username"] == "bob@example.com"
+    assert body["display_name"] == "Bob Builder"
+    assert body["is_active"] is True
+    assert user is not None
+    assert authenticated_user is not None
+    assert audit_event is not None
+    assert audit_event.target_type == "user"
+    assert audit_event.target_id == user.id
+    assert audit_event.metadata_json == {
+        "username": "bob@example.com",
+        "display_name": "Bob Builder",
+    }
+
+
+def test_access_api_admin_user_create_is_disabled_when_local_auth_is_disabled(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory, username="admin", permission="access:manage")
+        client = _client_with_local_auth_disabled(session_factory)
+        _login(client, username="admin")
+
+        response = client.post(
+            f"{ADMIN_ACCESS_URL}/users",
+            json={
+                "username": "bob",
+                "display_name": "Bob Builder",
+                "password": "new correct horse battery",
+            },
+        )
+        with session_factory() as session:
+            user = session.scalar(select(User).where(User.username == "bob"))
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Local authentication is disabled"}
+    assert user is None
+
+
+def test_access_api_admin_user_create_rejects_duplicate_username(engine: Engine) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        _create_user(session_factory, username="admin", permission="access:manage")
+        _create_user(session_factory, username="bob", permission=None)
+        client = _client_with_session_factory(session_factory)
+        _login(client, username="admin")
+
+        response = client.post(
+            f"{ADMIN_ACCESS_URL}/users",
+            json={
+                "username": "bob",
+                "display_name": "Duplicate Bob",
+                "password": "new correct horse battery",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Username already exists"}
 
 
 def test_access_api_admin_changes_user_password_and_audits(engine: Engine) -> None:

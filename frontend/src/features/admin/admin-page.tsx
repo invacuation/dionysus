@@ -21,6 +21,7 @@ import {
   assignAccessPermission,
   createAccessGroup,
   createAccessMembership,
+  createAccessUser,
   createMachineCredential,
   getSecuritySettings,
   listAdminImportHistory,
@@ -130,6 +131,12 @@ type AccessPasswordForm = {
   newPassword: string
 }
 
+type AccessUserForm = {
+  username: string
+  displayName: string
+  password: string
+}
+
 type AdminSortState<Column extends string> = {
   column: Column
   direction: SortDirection
@@ -150,6 +157,7 @@ const defaultAccessPermissionForm: AccessPermissionForm = {
   scopeId: "",
 }
 const defaultAccessPasswordForm: AccessPasswordForm = { userId: "", newPassword: "" }
+const defaultAccessUserForm: AccessUserForm = { username: "", displayName: "", password: "" }
 
 export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: boolean }) {
   const queryClient = useQueryClient()
@@ -807,6 +815,7 @@ function AccessManagementSection({
   const [permissionForm, setPermissionForm] =
     useState<AccessPermissionForm>(defaultAccessPermissionForm)
   const [passwordForm, setPasswordForm] = useState<AccessPasswordForm>(defaultAccessPasswordForm)
+  const [userForm, setUserForm] = useState<AccessUserForm>(defaultAccessUserForm)
 
   const createGroupMutation = useMutation({
     mutationFn: () =>
@@ -838,6 +847,13 @@ function AccessManagementSection({
       ),
     onSuccess: async () => {
       setPermissionForm(defaultAccessPermissionForm)
+      await onChanged()
+    },
+  })
+  const createUserMutation = useMutation({
+    mutationFn: () => createAccessUser(normalizeAccessUserForm(userForm)),
+    onSuccess: async () => {
+      setUserForm(defaultAccessUserForm)
       await onChanged()
     },
   })
@@ -885,6 +901,11 @@ function AccessManagementSection({
   )
   const canAssignPermission =
     normalizedPermission.principal_id.length > 0 && normalizedPermission.permission.length > 0
+  const normalizedUser = normalizeAccessUserForm(userForm)
+  const canCreateUser =
+    normalizedUser.username.length > 0 &&
+    normalizedUser.display_name.length > 0 &&
+    normalizedUser.password.trim().length > 0
   const canSetPassword =
     passwordForm.userId.length > 0 && passwordForm.newPassword.trim().length > 0
 
@@ -898,6 +919,63 @@ function AccessManagementSection({
       </section>
 
       <section className="grid gap-3 xl:grid-cols-4">
+        {canShowAccessUserPasswordActions(localAuthEnabled) ? (
+          <Card className="py-0">
+            <CardContent className="space-y-3 p-4">
+              <h2 className="text-sm font-semibold">Create User</h2>
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (canCreateUser) {
+                    createUserMutation.mutate()
+                  }
+                }}
+              >
+                <Field label="Username">
+                  <Input
+                    autoComplete="username"
+                    onChange={(event) =>
+                      setUserForm((current) => ({ ...current, username: event.target.value }))
+                    }
+                    placeholder="bob@example.com"
+                    value={userForm.username}
+                  />
+                </Field>
+                <Field label="Display Name">
+                  <Input
+                    autoComplete="name"
+                    onChange={(event) =>
+                      setUserForm((current) => ({ ...current, displayName: event.target.value }))
+                    }
+                    placeholder="Bob Builder"
+                    value={userForm.displayName}
+                  />
+                </Field>
+                <Field label="Password">
+                  <Input
+                    autoComplete="new-password"
+                    onChange={(event) =>
+                      setUserForm((current) => ({ ...current, password: event.target.value }))
+                    }
+                    placeholder="Temporary password"
+                    type="password"
+                    value={userForm.password}
+                  />
+                </Field>
+                <MutationError error={createUserMutation.error} />
+                <Button
+                  disabled={!canCreateUser || createUserMutation.isPending}
+                  size="sm"
+                  type="submit"
+                >
+                  {createUserMutation.isPending ? "Creating..." : "Create user"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
+
         <Card className="py-0">
           <CardContent className="space-y-3 p-4">
             <h2 className="text-sm font-semibold">Create Group</h2>
@@ -2176,6 +2254,14 @@ export function scopeOptionsForAccess(): ScopeOption[] {
 
 export function canShowAccessUserPasswordActions(localAuthEnabled: boolean): boolean {
   return localAuthEnabled
+}
+
+export function normalizeAccessUserForm(form: AccessUserForm) {
+  return {
+    username: form.username.trim(),
+    display_name: form.displayName.trim(),
+    password: form.password,
+  }
 }
 
 export function normalizeSecuritySettingsForm(
