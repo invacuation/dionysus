@@ -50,6 +50,7 @@ class TrivyPreviewResponse(BaseModel):
     scanner: str
     report_kind: str
     tool_label: str
+    detected_project_name: str
     detected_asset_name: str
     detected_target_ref: str
     scan_started_at: datetime | None
@@ -368,17 +369,36 @@ def _trivy_preview_response(parsed_report: ParsedReport) -> TrivyPreviewResponse
         Sanitized preview fields and finding counts for the UI import form.
     """
 
-    detected_target = parsed_report.target.strip()
+    detected_project_name, detected_asset_name, detected_target = _trivy_image_target_defaults(
+        parsed_report.target
+    )
     return TrivyPreviewResponse(
         scanner=parsed_report.scanner,
         report_kind=parsed_report.report_kind,
         tool_label="Trivy (Image)",
-        detected_asset_name=detected_target,
+        detected_project_name=detected_project_name,
+        detected_asset_name=detected_asset_name,
         detected_target_ref=detected_target,
         scan_started_at=parsed_report.scan_started_at,
         finding_count=len(parsed_report.findings),
         group_count=_parsed_report_group_count(parsed_report),
     )
+
+
+def _trivy_image_target_defaults(target: str) -> tuple[str, str, str]:
+    detected_target = target.strip()
+    leaf = detected_target.rsplit("/", maxsplit=1)[-1]
+    image_name = leaf
+    tag = leaf
+
+    tag_separator = leaf.rfind(":")
+    if tag_separator > 0:
+        image_name = leaf[:tag_separator]
+        tag = leaf[tag_separator + 1 :]
+    elif "@" in leaf:
+        image_name = leaf.split("@", maxsplit=1)[0]
+
+    return image_name.strip(), tag.strip(), detected_target
 
 
 def _parsed_report_group_count(parsed_report: ParsedReport) -> int:

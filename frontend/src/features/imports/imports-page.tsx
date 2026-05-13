@@ -75,6 +75,9 @@ export function ImportsPage() {
   const previewMutation = useMutation({
     mutationFn: previewTrivyReport,
     onSuccess: (preview) => {
+      setFolderPath((current) => current || preview.detected_project_name || "")
+      setAssetName((current) => current || preview.detected_asset_name || "")
+      setTargetRef((current) => current || preview.detected_target_ref || "")
       setScanStartedAt((current) => current || datetimeLocalFromIso(preview.scan_started_at))
     },
   })
@@ -206,7 +209,6 @@ export function ImportsPage() {
                     setFolderPath(event.target.value)
                     importMutation.reset()
                   }}
-                  placeholder="ubuntu/25.10"
                   value={folderPath}
                 />
                 <datalist id="import-folder-path-options">
@@ -756,6 +758,28 @@ export function datetimeLocalFromIso(value: string | null | undefined): string {
   const hours = String(date.getHours()).padStart(2, "0")
   const minutes = String(date.getMinutes()).padStart(2, "0")
   return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+export function importFormDefaultsFromPreview(
+  current: {
+    folderPath: string
+    assetName: string
+    targetRef: string
+    scanStartedAt: string
+  },
+  preview: TrivyImportPreviewResponse,
+): {
+  folderPath: string
+  assetName: string
+  targetRef: string
+  scanStartedAt: string
+} {
+  return {
+    folderPath: current.folderPath || preview.detected_project_name || "",
+    assetName: current.assetName || preview.detected_asset_name || "",
+    targetRef: current.targetRef || preview.detected_target_ref || "",
+    scanStartedAt: current.scanStartedAt || datetimeLocalFromIso(preview.scan_started_at),
+  }
 }
 
 export function canUploadReport({
