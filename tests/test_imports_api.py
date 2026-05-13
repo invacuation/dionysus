@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -324,6 +325,45 @@ def test_api_trivy_preview_returns_detected_metadata_without_persistence(
             assert session.scalars(select(Scan)).all() == []
             assert session.scalars(select(RawFindingInstance)).all() == []
             assert session.scalars(select(AuditLogEvent)).all() == []
+
+
+def test_api_trivy_preview_preserves_digest_image_default_names(engine: Engine) -> None:
+    payload = json.loads(FIXTURE.read_text())
+    payload["ArtifactName"] = (
+        "registry.example.test/dionysus/api@sha256:"
+        "aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000"
+    )
+
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        user_id = _create_user(session_factory)
+        with session_factory() as session:
+            project_id, _target_id, _folder_id = _project_inventory(session)
+            session.commit()
+        _grant_permission(
+            session_factory,
+            principal_type=PrincipalType.USER,
+            principal_id=user_id,
+            permission="import:upload",
+            scope_type="project",
+            scope_id=project_id,
+        )
+        client = _client_with_session_factory(session_factory)
+        client.cookies.set(SESSION_COOKIE, _create_session_cookie(session_factory, user_id))
+
+        response = _post_trivy_preview(
+            client,
+            project_id=project_id,
+            payload=json.dumps(payload).encode(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["detected_project_name"] == "api"
+        assert response.json()["detected_asset_name"] == (
+            "api@sha256:aaaabbbbccccddddeeeeffff1111222233334444555566667777888899990000"
+        )
+        assert response.json()["detected_target_ref"] == payload["ArtifactName"]
 
 
 def test_api_trivy_import_uses_report_created_at_when_form_timestamp_absent(
