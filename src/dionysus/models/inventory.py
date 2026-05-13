@@ -119,6 +119,8 @@ class AssetNode(TimestampMixin, Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     sla_tracking_enabled: Mapped[bool | None] = mapped_column(Boolean)
     sla_reporting_enabled: Mapped[bool | None] = mapped_column(Boolean)
+    grace_period_enabled: Mapped[bool | None] = mapped_column(Boolean)
+    grace_period_percent: Mapped[int | None] = mapped_column(Integer)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     project: Mapped[Project] = relationship(back_populates="assets")

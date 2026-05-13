@@ -32,6 +32,8 @@ function asset(overrides: Partial<Asset>): Asset {
     scan_label: null,
     sla_tracking_enabled: null,
     sla_reporting_enabled: null,
+    grace_period_enabled: null,
+    grace_period_percent: null,
     sort_order: 0,
     ...overrides,
   }
@@ -313,6 +315,10 @@ describe("project grace percentage UI", () => {
       join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
       "utf8",
     )
+    const trackingLabelIndex = source.indexOf('label="SLA tracking"')
+    const disableTrackingIndex = source.indexOf('"Disable SLA tracking"')
+    const reportingLabelIndex = source.indexOf('label="SLA reporting"')
+    const disableReportingIndex = source.indexOf('"Disable SLA reporting"')
     const peerReviewLabelIndex = source.indexOf('label="Peer review"')
     const requirePeerReviewIndex = source.indexOf('"Require peer review"')
     const gracePeriodLabelIndex = source.indexOf('label="Grace period"')
@@ -321,6 +327,11 @@ describe("project grace percentage UI", () => {
     const graceFormIndex = source.indexOf('aria-label="Grace percent"')
     const deleteProjectIndex = source.indexOf("Delete project")
 
+    expect(trackingLabelIndex).toBeGreaterThan(-1)
+    expect(disableTrackingIndex).toBeGreaterThan(trackingLabelIndex)
+    expect(disableTrackingIndex).toBeLessThan(reportingLabelIndex)
+    expect(disableReportingIndex).toBeGreaterThan(reportingLabelIndex)
+    expect(disableReportingIndex).toBeLessThan(peerReviewLabelIndex)
     expect(peerReviewLabelIndex).toBeGreaterThan(-1)
     expect(requirePeerReviewIndex).toBeGreaterThan(peerReviewLabelIndex)
     expect(requirePeerReviewIndex).toBeLessThan(gracePeriodLabelIndex)

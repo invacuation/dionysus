@@ -870,13 +870,47 @@ function ProjectSettingsSummary({
           description="Controls whether findings in this project count toward SLA timing."
           label="SLA tracking"
         >
-          <StatusPill enabled={project.sla_tracking_enabled} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill enabled={project.sla_tracking_enabled} />
+            <Button
+              className="max-w-full whitespace-normal"
+              disabled={updateProjectMutation.isPending}
+              onClick={() => {
+                setProjectUpdateIntent("settings")
+                updateProjectMutation.mutate({
+                  sla_tracking_enabled: !project.sla_tracking_enabled,
+                })
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {project.sla_tracking_enabled ? "Disable SLA tracking" : "Enable SLA tracking"}
+            </Button>
+          </div>
         </DetailRow>
         <DetailRow
           description="Controls whether this project appears in SLA reporting and overview risk counts."
           label="SLA reporting"
         >
-          <StatusPill enabled={project.sla_reporting_enabled} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill enabled={project.sla_reporting_enabled} />
+            <Button
+              className="max-w-full whitespace-normal"
+              disabled={updateProjectMutation.isPending}
+              onClick={() => {
+                setProjectUpdateIntent("settings")
+                updateProjectMutation.mutate({
+                  sla_reporting_enabled: !project.sla_reporting_enabled,
+                })
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {project.sla_reporting_enabled ? "Disable SLA reporting" : "Enable SLA reporting"}
+            </Button>
+          </div>
         </DetailRow>
         <DetailRow
           description="Requires another reviewer to approve finding status changes for this project."
@@ -1007,11 +1041,15 @@ function AssetDetail({
   const [name, setName] = useState("")
   const [slaTracking, setSlaTracking] = useState<OverrideSelectValue>("inherit")
   const [slaReporting, setSlaReporting] = useState<OverrideSelectValue>("inherit")
+  const [gracePeriod, setGracePeriod] = useState<OverrideSelectValue>("inherit")
+  const [gracePercent, setGracePercent] = useState("")
 
   useEffect(() => {
     setName(asset?.name ?? "")
     setSlaTracking(overrideToSelectValue(asset?.sla_tracking_enabled ?? null))
     setSlaReporting(overrideToSelectValue(asset?.sla_reporting_enabled ?? null))
+    setGracePeriod(overrideToSelectValue(asset?.grace_period_enabled ?? null))
+    setGracePercent(asset?.grace_period_percent ? String(asset.grace_period_percent) : "")
   }, [asset])
 
   const updateAssetMutation = useMutation({
@@ -1023,6 +1061,9 @@ function AssetDetail({
         name: name.trim(),
         sla_tracking_enabled: selectValueToOverride(slaTracking),
         sla_reporting_enabled: selectValueToOverride(slaReporting),
+        grace_period_enabled: selectValueToOverride(gracePeriod),
+        grace_period_percent:
+          gracePercent.trim().length > 0 ? normalizeGracePercent(gracePercent, 100) : null,
       })
     },
     onSuccess: onSaved,
@@ -1095,6 +1136,14 @@ function AssetDetail({
             <OverrideValue value={asset.sla_reporting_enabled} />
           )}
         </DetailRow>
+        <DetailRow label="Grace period">
+          <OverrideValue value={asset.grace_period_enabled} />
+        </DetailRow>
+        <DetailRow label="Grace period percentage">
+          <span className="text-muted-foreground">
+            {asset.grace_period_percent ? `${asset.grace_period_percent}%` : "Inherited"}
+          </span>
+        </DetailRow>
       </dl>
 
       <form
@@ -1140,6 +1189,25 @@ function AssetDetail({
             <option value="disabled">Disabled</option>
           </select>
         </label>
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Grace period
+          <select
+            className={selectClassName}
+            onChange={(event) => setGracePeriod(event.target.value as OverrideSelectValue)}
+            value={gracePeriod}
+          >
+            <option value="inherit">Inherit</option>
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+        <Input
+          aria-label="Asset grace percent"
+          inputMode="numeric"
+          onChange={(event) => setGracePercent(event.target.value)}
+          placeholder="Inherited grace percentage"
+          value={gracePercent}
+        />
         {updateAssetMutation.isError ? (
           <StateMessage tone="error">{errorMessage(updateAssetMutation.error)}</StateMessage>
         ) : null}

@@ -74,6 +74,8 @@ class AssetResponse(BaseModel):
     scan_label: str | None
     sla_tracking_enabled: bool | None
     sla_reporting_enabled: bool | None
+    grace_period_enabled: bool | None
+    grace_period_percent: int | None
     sort_order: int
 
 
@@ -108,6 +110,8 @@ class ProjectUpdateRequest(BaseModel):
 
     slug: str | None = None
     name: str | None = None
+    sla_tracking_enabled: bool | None = None
+    sla_reporting_enabled: bool | None = None
     require_peer_review_for_status_changes: bool | None = None
     grace_period_enabled: bool | None = None
     grace_period_percent: int | None = None
@@ -142,6 +146,8 @@ class AssetUpdateRequest(BaseModel):
     parent_id: str | None = None
     sla_tracking_enabled: bool | None = None
     sla_reporting_enabled: bool | None = None
+    grace_period_enabled: bool | None = None
+    grace_period_percent: int | None = None
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -285,6 +291,16 @@ def project_update_api(
                 if payload.name is None:
                     raise ValueError("project name must be non-empty")
                 update_project(session, project, name=payload.name)
+            if "sla_tracking_enabled" in payload.model_fields_set:
+                sla_tracking_enabled = payload.sla_tracking_enabled
+                if sla_tracking_enabled is None:
+                    raise _bad_request("sla_tracking_enabled must be a boolean")
+                project.sla_tracking_enabled = sla_tracking_enabled
+            if "sla_reporting_enabled" in payload.model_fields_set:
+                sla_reporting_enabled = payload.sla_reporting_enabled
+                if sla_reporting_enabled is None:
+                    raise _bad_request("sla_reporting_enabled must be a boolean")
+                project.sla_reporting_enabled = sla_reporting_enabled
             if "require_peer_review_for_status_changes" in payload.model_fields_set:
                 require_peer_review = payload.require_peer_review_for_status_changes
                 if require_peer_review is None:
@@ -610,6 +626,16 @@ def asset_update_api(
                         if "sla_reporting_enabled" in payload.model_fields_set
                         else asset.sla_reporting_enabled
                     ),
+                    grace_period_enabled=(
+                        payload.grace_period_enabled
+                        if "grace_period_enabled" in payload.model_fields_set
+                        else asset.grace_period_enabled
+                    ),
+                    grace_period_percent=(
+                        payload.grace_period_percent
+                        if "grace_period_percent" in payload.model_fields_set
+                        else asset.grace_period_percent
+                    ),
                 )
         except ValueError as exc:
             raise _bad_request(str(exc)) from exc
@@ -773,6 +799,8 @@ def _asset_update_changed_fields(payload: AssetUpdateRequest) -> list[str]:
             "parent_id",
             "sla_tracking_enabled",
             "sla_reporting_enabled",
+            "grace_period_enabled",
+            "grace_period_percent",
         ]
         if field in payload.model_fields_set
     ]
@@ -805,6 +833,22 @@ def _project_update_changes(
                 "old": project.name,
                 "new": normalized_name,
             }
+    if (
+        "sla_tracking_enabled" in payload.model_fields_set
+        and payload.sla_tracking_enabled != project.sla_tracking_enabled
+    ):
+        changes["sla_tracking_enabled"] = {
+            "old": project.sla_tracking_enabled,
+            "new": bool(payload.sla_tracking_enabled),
+        }
+    if (
+        "sla_reporting_enabled" in payload.model_fields_set
+        and payload.sla_reporting_enabled != project.sla_reporting_enabled
+    ):
+        changes["sla_reporting_enabled"] = {
+            "old": project.sla_reporting_enabled,
+            "new": bool(payload.sla_reporting_enabled),
+        }
     if (
         "require_peer_review_for_status_changes" in payload.model_fields_set
         and payload.require_peer_review_for_status_changes
@@ -844,7 +888,12 @@ def _has_sla_update(payload: AssetUpdateRequest) -> bool:
     """
 
     return bool(
-        {"sla_tracking_enabled", "sla_reporting_enabled"}.intersection(payload.model_fields_set)
+        {
+            "sla_tracking_enabled",
+            "sla_reporting_enabled",
+            "grace_period_enabled",
+            "grace_period_percent",
+        }.intersection(payload.model_fields_set)
     )
 
 
@@ -968,5 +1017,7 @@ def _asset_response(asset: AssetNode, *, scan_label: str | None = None) -> Asset
         scan_label=scan_label,
         sla_tracking_enabled=asset.sla_tracking_enabled,
         sla_reporting_enabled=asset.sla_reporting_enabled,
+        grace_period_enabled=asset.grace_period_enabled,
+        grace_period_percent=asset.grace_period_percent,
         sort_order=asset.sort_order,
     )

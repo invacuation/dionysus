@@ -77,7 +77,7 @@ def calculate_sla_state(
     sla_days = max(0, _sla_days_for_severity(project, finding.severity))
     due_at = first_seen_at + timedelta(days=sla_days)
     remaining_days = (due_at - now).days
-    grace_days = _grace_days(project, sla_days)
+    grace_days = _grace_days(project, asset, sla_days)
     grace_remaining_days = remaining_days + grace_days if grace_days is not None else None
 
     return SlaState(
@@ -134,10 +134,23 @@ def _sla_days_for_severity(project: Project, severity: str) -> int:
     return default_days if configured_days is None else configured_days
 
 
-def _grace_days(project: Project, sla_days: int) -> int | None:
-    if project.grace_period_enabled is not True:
+def _grace_days(project: Project, asset: AssetNode | None, sla_days: int) -> int | None:
+    grace_period_enabled, grace_period_percent = _grace_settings(project, asset)
+    if grace_period_enabled is not True:
         return None
-    grace_period_percent = (
-        100 if project.grace_period_percent is None else project.grace_period_percent
-    )
+    grace_period_percent = 100 if grace_period_percent is None else grace_period_percent
     return max(0, sla_days * grace_period_percent // 100)
+
+
+def _grace_settings(project: Project, asset: AssetNode | None) -> tuple[bool, int | None]:
+    current = asset
+    visited: set[str | int] = set()
+    while current is not None:
+        visited_key = current.id or id(current)
+        if visited_key in visited:
+            break
+        visited.add(visited_key)
+        if current.grace_period_enabled is not None:
+            return current.grace_period_enabled, current.grace_period_percent
+        current = current.parent
+    return project.grace_period_enabled, project.grace_period_percent

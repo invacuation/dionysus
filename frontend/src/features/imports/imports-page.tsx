@@ -673,6 +673,8 @@ export function pendingImportFolders(existingFolders: Asset[], folderPath: strin
       scan_label: null,
       sla_tracking_enabled: null,
       sla_reporting_enabled: null,
+      grace_period_enabled: null,
+      grace_period_percent: null,
       sort_order: Number.MAX_SAFE_INTEGER - pendingFolders.length,
     }
     pendingFolders.push(pendingFolder)
@@ -824,6 +826,8 @@ export function pendingImportAsset(
     scan_label: importPreviewScanLabel(preview),
     sla_tracking_enabled: null,
     sla_reporting_enabled: null,
+    grace_period_enabled: null,
+    grace_period_percent: null,
     sort_order: Number.MAX_SAFE_INTEGER,
   }
 }

@@ -106,6 +106,8 @@ def create_asset_node(
     metadata_json: Mapping[str, Any] | None = None,
     sla_tracking_enabled: bool | None = None,
     sla_reporting_enabled: bool | None = None,
+    grace_period_enabled: bool | None = None,
+    grace_period_percent: int | None = None,
     sort_order: int = 0,
 ) -> AssetNode:
     """Create and flush an asset node under an optional parent.
@@ -120,6 +122,8 @@ def create_asset_node(
         metadata_json: Optional JSON-compatible metadata.
         sla_tracking_enabled: Optional per-node SLA tracking override.
         sla_reporting_enabled: Optional per-node SLA reporting override.
+        grace_period_enabled: Optional per-node grace period override.
+        grace_period_percent: Optional per-node grace period percentage override.
         sort_order: Stable sibling ordering hint.
 
     Returns:
@@ -132,6 +136,7 @@ def create_asset_node(
     validated_name = _validate_node_name(name)
     validated_type = _validate_node_type(node_type)
     _validate_parent_project(project, parent)
+    _validate_grace_period_percent(grace_period_percent)
 
     node = AssetNode(
         project=project,
@@ -143,6 +148,8 @@ def create_asset_node(
         metadata_json=dict(metadata_json or {}),
         sla_tracking_enabled=sla_tracking_enabled,
         sla_reporting_enabled=sla_reporting_enabled,
+        grace_period_enabled=grace_period_enabled,
+        grace_period_percent=grace_period_percent,
         sort_order=sort_order,
     )
     session.add(node)
@@ -407,8 +414,10 @@ def set_asset_sla_overrides(
     session: Session,
     node: AssetNode,
     *,
-    sla_tracking_enabled: bool | None,
-    sla_reporting_enabled: bool | None,
+    sla_tracking_enabled: bool | None = None,
+    sla_reporting_enabled: bool | None = None,
+    grace_period_enabled: bool | None = None,
+    grace_period_percent: int | None = None,
 ) -> AssetNode:
     """Set nullable per-asset SLA overrides.
 
@@ -417,13 +426,18 @@ def set_asset_sla_overrides(
         node: The asset node receiving overrides.
         sla_tracking_enabled: Optional tracking override.
         sla_reporting_enabled: Optional reporting override.
+        grace_period_enabled: Optional grace period override.
+        grace_period_percent: Optional grace period percentage override.
 
     Returns:
         The updated asset node.
     """
 
+    _validate_grace_period_percent(grace_period_percent)
     node.sla_tracking_enabled = sla_tracking_enabled
     node.sla_reporting_enabled = sla_reporting_enabled
+    node.grace_period_enabled = grace_period_enabled
+    node.grace_period_percent = grace_period_percent
     session.flush()
     return node
 
@@ -449,6 +463,11 @@ def _validate_node_name(name: str) -> str:
 def _validate_parent_project(project: Project, parent: AssetNode | None) -> None:
     if parent is not None and parent.project_id != project.id:
         raise ValueError("asset parent must belong to the same project")
+
+
+def _validate_grace_period_percent(grace_period_percent: int | None) -> None:
+    if grace_period_percent is not None and grace_period_percent <= 0:
+        raise ValueError("grace_period_percent must be a positive integer")
 
 
 def _child_path(parent: AssetNode | None, name: str) -> str:
