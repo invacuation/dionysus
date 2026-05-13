@@ -441,6 +441,8 @@ export type CreateProjectParams = {
 export type UpdateProjectParams = {
   slug?: string
   name?: string
+  sla_tracking_enabled?: boolean
+  sla_reporting_enabled?: boolean
   require_peer_review_for_status_changes?: boolean
   grace_period_enabled?: boolean
   grace_period_percent?: number
@@ -456,6 +458,8 @@ export type Asset = {
   scan_label: string | null
   sla_tracking_enabled: boolean | null
   sla_reporting_enabled: boolean | null
+  grace_period_enabled: boolean | null
+  grace_period_percent: number | null
   sort_order: number
 }
 
@@ -481,6 +485,8 @@ export type UpdateAssetParams = {
   parent_id?: string | null
   sla_tracking_enabled?: boolean | null
   sla_reporting_enabled?: boolean | null
+  grace_period_enabled?: boolean | null
+  grace_period_percent?: number | null
 }
 
 export type ImportTrivyReportParams = {

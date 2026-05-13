@@ -281,6 +281,53 @@ def test_inventory_api_project_update_changes_grace_period_settings(engine: Engi
     }
 
 
+def test_inventory_api_project_update_changes_sla_reporting_and_tracking(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = create_project(session, slug="alpha", name="Alpha")
+            project_id = project.id
+            session.commit()
+        client = _client_with_session_factory(session_factory)
+        _login_user_with_permission(
+            client,
+            session_factory,
+            permission="project:update",
+            scope_type="project",
+            scope_id=project_id,
+        )
+
+        response = client.patch(
+            f"/api/projects/{project_id}",
+            json={"sla_tracking_enabled": False, "sla_reporting_enabled": False},
+        )
+        invalid_response = client.patch(
+            f"/api/projects/{project_id}",
+            json={"sla_tracking_enabled": None},
+        )
+        with session_factory() as session:
+            updated_project = session.get(Project, project_id)
+            audit_event = session.scalar(
+                select(AuditLogEvent).where(AuditLogEvent.event_type == "inventory.project.update")
+            )
+
+    assert response.status_code == 200
+    assert response.json()["sla_tracking_enabled"] is False
+    assert response.json()["sla_reporting_enabled"] is False
+    assert invalid_response.status_code == 400
+    assert updated_project is not None
+    assert updated_project.sla_tracking_enabled is False
+    assert updated_project.sla_reporting_enabled is False
+    assert audit_event is not None
+    assert set(audit_event.metadata_json["changed_fields"]) == {
+        "sla_tracking_enabled",
+        "sla_reporting_enabled",
+    }
+
+
 def test_inventory_api_project_update_renames_project_and_records_audit_event(
     engine: Engine,
 ) -> None:
@@ -395,6 +442,8 @@ def test_inventory_api_assets_returns_authenticated_project_assets(engine: Engin
                 "scan_label": None,
                 "sla_tracking_enabled": None,
                 "sla_reporting_enabled": None,
+                "grace_period_enabled": None,
+                "grace_period_percent": None,
                 "sort_order": 0,
             },
             {
@@ -407,6 +456,8 @@ def test_inventory_api_assets_returns_authenticated_project_assets(engine: Engin
                 "scan_label": None,
                 "sla_tracking_enabled": None,
                 "sla_reporting_enabled": None,
+                "grace_period_enabled": None,
+                "grace_period_percent": None,
                 "sort_order": 0,
             },
             {
@@ -419,6 +470,8 @@ def test_inventory_api_assets_returns_authenticated_project_assets(engine: Engin
                 "scan_label": None,
                 "sla_tracking_enabled": None,
                 "sla_reporting_enabled": None,
+                "grace_period_enabled": None,
+                "grace_period_percent": None,
                 "sort_order": 0,
             },
         ],
@@ -685,6 +738,8 @@ def test_inventory_api_folder_resolve_creates_missing_folders_and_records_audit_
         "scan_label": None,
         "sla_tracking_enabled": None,
         "sla_reporting_enabled": None,
+        "grace_period_enabled": None,
+        "grace_period_percent": None,
         "sort_order": 0,
     }
     assert second_response.status_code == 201
@@ -878,6 +933,8 @@ def test_inventory_api_asset_patch_renames_moves_and_updates_sla_overrides(
     assert body["name"] == "Renamed Image"
     assert body["sla_tracking_enabled"] is False
     assert body["sla_reporting_enabled"] is True
+    assert body["grace_period_enabled"] is None
+    assert body["grace_period_percent"] is None
     assert event is not None
     assert event.target_type == "asset_node"
     assert event.target_id == target_id
@@ -890,6 +947,53 @@ def test_inventory_api_asset_patch_renames_moves_and_updates_sla_overrides(
             "sla_reporting_enabled",
         ]
     }
+
+
+def test_inventory_api_asset_patch_updates_grace_period_overrides(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = create_project(session, slug="alpha", name="Alpha")
+            target = create_scan_target(
+                session,
+                project=project,
+                folder_path="images/releases",
+                name="Production Image",
+                target_ref="registry.example.test/app:2026.05",
+            )
+            project_id = project.id
+            target_id = target.id
+            session.commit()
+        client = _client_with_session_factory(session_factory)
+        _login_user_with_permission(
+            client,
+            session_factory,
+            permission="asset:update",
+            scope_type="project",
+            scope_id=project_id,
+        )
+
+        response = client.patch(
+            f"/api/projects/{project_id}/assets/{target_id}",
+            json={"grace_period_enabled": True, "grace_period_percent": 50},
+        )
+        invalid_response = client.patch(
+            f"/api/projects/{project_id}/assets/{target_id}",
+            json={"grace_period_percent": 0},
+        )
+        with session_factory() as session:
+            updated_target = session.get(AssetNode, target_id)
+
+    assert response.status_code == 200
+    assert response.json()["grace_period_enabled"] is True
+    assert response.json()["grace_period_percent"] == 50
+    assert invalid_response.status_code == 400
+    assert updated_target is not None
+    assert updated_target.grace_period_enabled is True
+    assert updated_target.grace_period_percent == 50
 
 
 def test_inventory_api_asset_patch_rejects_missing_asset_and_invalid_parent(

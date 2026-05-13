@@ -26,6 +26,8 @@ function asset(overrides: Partial<Asset>): Asset {
     scan_label: null,
     sla_tracking_enabled: null,
     sla_reporting_enabled: null,
+    grace_period_enabled: null,
+    grace_period_percent: null,
     sort_order: 0,
     ...overrides,
   }
