@@ -42,6 +42,9 @@ jobs:
       - name: set up python
         run: uv python install 3.13
 
+      - name: check lockfile
+        run: uv lock --check
+
       - name: install backend dependencies
         run: uv sync --dev
 
