@@ -20,7 +20,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-RUN apk add --no-cache libpq
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libpq \
+    && python -m pip install --no-cache-dir --upgrade "pip>=26.1"
 
 COPY --from=backend-build /app/.venv /app/.venv
 COPY pyproject.toml ./
