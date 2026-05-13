@@ -145,12 +145,21 @@ def _grace_days(project: Project, asset: AssetNode | None, sla_days: int) -> int
 def _grace_settings(project: Project, asset: AssetNode | None) -> tuple[bool, int | None]:
     current = asset
     visited: set[str | int] = set()
+    inherited_enabled: bool | None = None
+    inherited_percent: int | None = None
     while current is not None:
         visited_key = current.id or id(current)
         if visited_key in visited:
             break
         visited.add(visited_key)
-        if current.grace_period_enabled is not None:
-            return current.grace_period_enabled, current.grace_period_percent
+        if inherited_enabled is None and current.grace_period_enabled is not None:
+            inherited_enabled = current.grace_period_enabled
+        if inherited_percent is None and current.grace_period_percent is not None:
+            inherited_percent = current.grace_period_percent
+        if inherited_enabled is not None and inherited_percent is not None:
+            return inherited_enabled, inherited_percent
         current = current.parent
-    return project.grace_period_enabled, project.grace_period_percent
+    return (
+        project.grace_period_enabled if inherited_enabled is None else inherited_enabled,
+        project.grace_period_percent if inherited_percent is None else inherited_percent,
+    )

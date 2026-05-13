@@ -253,6 +253,37 @@ def test_asset_grace_period_override_can_disable_project_grace() -> None:
     assert state.grace_remaining_days is None
 
 
+def test_asset_grace_period_enabled_override_inherits_project_percent() -> None:
+    from dionysus.findings.sla import calculate_sla_state
+
+    project = Project(
+        slug="alpha",
+        name="Alpha",
+        grace_period_enabled=False,
+        grace_period_percent=50,
+    )
+    asset = AssetNode(
+        project=project,
+        node_type=AssetNodeType.SCAN_TARGET,
+        name="release-api",
+        path="release-api",
+        grace_period_enabled=True,
+        grace_period_percent=None,
+    )
+    finding = _finding(first_seen_at=datetime(2026, 5, 1, tzinfo=UTC))
+
+    state = calculate_sla_state(
+        project,
+        asset,
+        finding,
+        now=datetime(2026, 5, 11, tzinfo=UTC),
+    )
+
+    assert state.remaining_days == 50
+    assert state.grace_days == 30
+    assert state.grace_remaining_days == 80
+
+
 def test_non_open_findings_return_inactive_not_applicable_sla_state() -> None:
     from dionysus.findings.sla import calculate_sla_state
 
