@@ -11,6 +11,7 @@ import {
   importUploaderLabel,
   nextAdminSortState,
   normalizeAccessPermissionForm,
+  normalizeAccessUserForm,
   normalizePermissionTesterForm,
   permissionOptionsForAccess,
   principalOptionsForAccess,
@@ -485,6 +486,22 @@ describe("canShowAccessUserPasswordActions", () => {
   test("shows user password actions only when local auth is enabled", () => {
     expect(canShowAccessUserPasswordActions(true)).toBe(true)
     expect(canShowAccessUserPasswordActions(false)).toBe(false)
+  })
+})
+
+describe("normalizeAccessUserForm", () => {
+  test("trims identity fields while preserving the password exactly", () => {
+    expect(
+      normalizeAccessUserForm({
+        username: " bob@example.com ",
+        displayName: " Bob Builder ",
+        password: "  correct horse battery  ",
+      }),
+    ).toEqual({
+      username: "bob@example.com",
+      display_name: "Bob Builder",
+      password: "  correct horse battery  ",
+    })
   })
 })
 
