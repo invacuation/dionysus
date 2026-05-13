@@ -391,12 +391,13 @@ def _trivy_image_target_defaults(target: str) -> tuple[str, str, str]:
     image_name = leaf
     tag = leaf
 
-    tag_separator = leaf.rfind(":")
+    name_and_tag, digest_separator, _digest = leaf.partition("@")
+    tag_separator = name_and_tag.rfind(":")
     if tag_separator > 0:
-        image_name = leaf[:tag_separator]
-        tag = leaf[tag_separator + 1 :]
-    elif "@" in leaf:
-        image_name = leaf.split("@", maxsplit=1)[0]
+        image_name = name_and_tag[:tag_separator]
+        tag = name_and_tag[tag_separator + 1 :]
+    elif digest_separator:
+        image_name = name_and_tag
 
     return image_name.strip(), tag.strip(), detected_target
 
