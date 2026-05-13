@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/invacuation/dionysus/compare/v0.6.0...v0.7.0) (2026-05-13)
+
+
+### Features
+
+* add admin local user creation ([#46](https://github.com/invacuation/dionysus/issues/46)) ([c6701dc](https://github.com/invacuation/dionysus/commit/c6701dcfb64ea9ba98b424b181390c08e4837e75))
+* add asset grace overrides and project sla controls ([#45](https://github.com/invacuation/dionysus/issues/45)) ([85d32ff](https://github.com/invacuation/dionysus/commit/85d32ff2dd2988ad09da885f02c91592adc27997)), closes [#23](https://github.com/invacuation/dionysus/issues/23) [#27](https://github.com/invacuation/dionysus/issues/27)
+
+
+### Bug Fixes
+
+* **imports:** parse trivy digest image defaults ([#43](https://github.com/invacuation/dionysus/issues/43)) ([4fc7c17](https://github.com/invacuation/dionysus/commit/4fc7c1766a68f1a6538dcceceeb6b1185e069a80))
+* **imports:** populate trivy image defaults ([#41](https://github.com/invacuation/dionysus/issues/41)) ([60c8995](https://github.com/invacuation/dionysus/commit/60c8995b71b4f7cc3f05fa8129970f409b259e19))
+
 ## [0.6.0](https://github.com/invacuation/dionysus/compare/v0.5.0...v0.6.0) (2026-05-12)
 
 
