@@ -231,6 +231,12 @@ export type AssignAccessPermissionParams = {
   scope_id?: string | null
 }
 
+export type CreateAccessUserParams = {
+  username: string
+  display_name: string
+  password: string
+}
+
 export type UserSession = {
   id: string
   user_id: string
@@ -791,6 +797,10 @@ export function assignAccessPermission(
     "/api/admin/access/permissions",
     params,
   )
+}
+
+export function createAccessUser(params: CreateAccessUserParams): Promise<AccessUser> {
+  return postJson<AccessUser, CreateAccessUserParams>("/api/admin/access/users", params)
 }
 
 export async function setAccessUserPassword(

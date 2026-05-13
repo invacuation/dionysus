@@ -12,7 +12,7 @@ from dionysus.audit import record_audit_event
 from dionysus.identity.actors import AuthenticatedActor
 from dionysus.identity.authorization import require_permission
 from dionysus.identity.permissions import KNOWN_PERMISSIONS, assign_permission
-from dionysus.identity.users import set_user_password
+from dionysus.identity.users import create_user, set_user_password
 from dionysus.models.identity import (
     Group,
     GroupMembership,
@@ -162,6 +162,16 @@ class PermissionAssignRequest(BaseModel):
     effect: PermissionEffect
     scope_type: str | None = None
     scope_id: str | None = None
+
+
+class UserCreateRequest(BaseModel):
+    """Request body for creating a local user account."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    display_name: str
+    password: str
 
 
 class UserPasswordSetRequest(BaseModel):
@@ -467,6 +477,62 @@ def permission_assign_api(
         )
         session.commit()
         return _permission_assignment_response(assignment)
+
+
+@router.post(
+    "/users",
+    response_model=UserAccessResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def user_create_api(
+    request: Request,
+    payload: UserCreateRequest,
+    actor: AuthenticatedActor = access_manage_actor_dependency,
+) -> UserAccessResponse:
+    """Create a local user account for authorized access managers."""
+
+    if not request.app.state.settings.local_auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local authentication is disabled",
+        )
+
+    session_factory = request.app.state.session_factory
+    with session_factory() as session:
+        try:
+            user = create_user(
+                session,
+                username=payload.username,
+                display_name=payload.display_name,
+                password=payload.password,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid user account request",
+            ) from exc
+        except IntegrityError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already exists",
+            ) from exc
+        record_audit_event(
+            session,
+            event_type="access.user.create",
+            actor_principal_type=actor.principal_type,
+            actor_principal_id=actor.principal_id,
+            actor_display=actor.display_name,
+            target_type="user",
+            target_id=user.id,
+            ip_address=_client_host(request),
+            user_agent=request.headers.get("user-agent"),
+            metadata={
+                "username": user.username,
+                "display_name": user.display_name,
+            },
+        )
+        session.commit()
+        return _user_response(user)
 
 
 @router.patch(

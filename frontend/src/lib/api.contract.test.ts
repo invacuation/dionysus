@@ -4,6 +4,7 @@ import {
   changeCurrentUserPassword,
   createAccessGroup,
   createAccessMembership,
+  createAccessUser,
   createFindingComment,
   createMachineCredential,
   createFolder,
@@ -30,6 +31,7 @@ import {
   type AccessListResponse,
   type AccessMembership,
   type AccessPermissionAssignment,
+  type AccessUser,
   type ActorMetadata,
   type AdminImportAttempt,
   type AdminImportHistoryResponse,
@@ -181,6 +183,11 @@ const accessPermission: Promise<AccessPermissionAssignment> = assignAccessPermis
   effect: "allow",
   scope_type: "project",
   scope_id: "project-1",
+})
+const createdAccessUser: Promise<AccessUser> = createAccessUser({
+  username: "bob@example.com",
+  display_name: "Bob Builder",
+  password: "new correct horse battery",
 })
 const changedAccessUserPassword: Promise<void> = setAccessUserPassword("user-1", {
   new_password: "new correct horse battery",
