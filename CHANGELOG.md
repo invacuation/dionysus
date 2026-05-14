@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/invacuation/dionysus/compare/v0.7.0...v0.7.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* keep uv lock release version in sync ([#48](https://github.com/invacuation/dionysus/issues/48)) ([68bfa8b](https://github.com/invacuation/dionysus/commit/68bfa8b483047c8b333e1cf348ead8c4aaf4959d))
+* upgrade runtime image packages and pip ([#47](https://github.com/invacuation/dionysus/issues/47)) ([e1b35bd](https://github.com/invacuation/dionysus/commit/e1b35bd914d56584428cfc5e55992a9e3a135795))
+
 ## [0.7.0](https://github.com/invacuation/dionysus/compare/v0.6.0...v0.7.0) (2026-05-13)
 
 
