@@ -37,6 +37,7 @@ func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	mountImportRoutes(router, settings, deps)
 	mountInventoryRoutes(router, settings, deps)
 	mountMachineCredentialRoutes(router, settings, deps)
+	mountOverviewRoutes(router, settings, deps)
 	mountPermissionTestRoutes(router, settings, deps)
 	mountSecuritySettingsRoutes(router, settings, deps)
 	mountOAuthRoutes(router, settings, deps)
