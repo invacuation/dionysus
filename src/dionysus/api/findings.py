@@ -41,6 +41,7 @@ from dionysus.security.settings import effective_peer_review_required
 router = APIRouter(prefix="/api/findings", tags=["findings"])
 authenticated_actor_dependency = Depends(get_authenticated_actor)
 FINDING_COMMENT_PERMISSION = "finding:comment"
+FINDING_VIEW_PERMISSION = "finding:view"
 FINDING_STATUS_CHANGE_REQUEST_PERMISSION = "finding:status_change:request"
 FINDING_STATUS_CHANGE_APPROVE_PERMISSION = "finding:status_change:approve"
 
@@ -287,7 +288,7 @@ def findings_list_api(
             if actor_has_permission(
                 session,
                 actor=actor,
-                permission="finding:view",
+                permission=FINDING_VIEW_PERMISSION,
                 scope_type="project",
                 scope_id=row.project.id,
             )
@@ -327,7 +328,7 @@ def finding_detail_api(
             session,
             actor=actor,
             finding=detail.finding,
-            permission="finding:view",
+            permission=FINDING_VIEW_PERMISSION,
         )
         detail = with_release_detail(session, detail)
         return _detail_response(
@@ -469,7 +470,8 @@ def finding_status_update_api(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Finding not found",
             )
-        detail = with_release_detail(session, detail)
+        if _actor_can_view_finding(session, actor=actor, finding=finding):
+            detail = with_release_detail(session, detail)
         response = _detail_response(
             detail,
             principal_displays=_principal_display_map(
@@ -556,7 +558,11 @@ def finding_status_request_approve_api(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         session.flush()
-        response = _updated_detail_or_404(session, finding_id)
+        response = _updated_detail_or_404(
+            session,
+            finding_id,
+            include_release_detail=_actor_can_view_finding(session, actor=actor, finding=finding),
+        )
         record_audit_event(
             session,
             event_type="finding.status.approved",
@@ -628,7 +634,11 @@ def finding_status_request_reject_api(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         session.flush()
-        response = _updated_detail_or_404(session, finding_id)
+        response = _updated_detail_or_404(
+            session,
+            finding_id,
+            include_release_detail=_actor_can_view_finding(session, actor=actor, finding=finding),
+        )
         record_audit_event(
             session,
             event_type="finding.status.rejected",
@@ -690,6 +700,21 @@ def _ensure_finding_permission(
         session,
         actor=actor,
         permission=permission,
+        scope_type="project",
+        scope_id=finding.project_id,
+    )
+
+
+def _actor_can_view_finding(
+    session: Session,
+    *,
+    actor: AuthenticatedActor,
+    finding: RawFindingInstance,
+) -> bool:
+    return actor_has_permission(
+        session,
+        actor=actor,
+        permission=FINDING_VIEW_PERMISSION,
         scope_type="project",
         scope_id=finding.project_id,
     )
@@ -939,14 +964,20 @@ def _status_request_for_finding_or_404(
     return status_request
 
 
-def _updated_detail_or_404(session: Session, finding_id: str) -> FindingDetailResponse:
+def _updated_detail_or_404(
+    session: Session,
+    finding_id: str,
+    *,
+    include_release_detail: bool,
+) -> FindingDetailResponse:
     detail = get_finding_detail(session, finding_id, now=datetime.now(UTC))
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Finding not found",
         )
-    detail = with_release_detail(session, detail)
+    if include_release_detail:
+        detail = with_release_detail(session, detail)
     return _detail_response(
         detail,
         principal_displays=_principal_display_map(

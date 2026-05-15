@@ -920,6 +920,58 @@ def test_findings_api_change_status_allows_project_scoped_grant(engine: Engine) 
     assert response.json()["status"] == "fixed"
 
 
+def test_findings_api_change_status_hides_release_details_without_view_grant(
+    engine: Engine,
+) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = Project(slug="alpha", name="Alpha")
+            session.add(project)
+            _scope, targets = _release_scope_with_targets(
+                session,
+                project=project,
+                versions=["40.0.1", "40.0.2"],
+            )
+            for version, target in targets.items():
+                import_trivy_report(
+                    session,
+                    project=project,
+                    scan_target=target,
+                    payload=FIXTURE.read_bytes(),
+                    now=datetime(2026, 5, int(version[-1]), 10, 0, tzinfo=UTC),
+                )
+            finding_id = session.scalars(
+                select(RawFindingInstance.id).where(
+                    RawFindingInstance.scan_target_id == targets["40.0.2"].id,
+                    RawFindingInstance.package_name == "openssl",
+                )
+            ).one()
+            session.commit()
+        client = _client_with_session_factory(session_factory)
+        user_id = _login_user(client, session_factory, grant_admin=False)
+        _grant_permission(
+            session_factory,
+            principal_type=PrincipalType.USER,
+            principal_id=user_id,
+            permission="finding:status_change:request",
+            scope_type="project",
+            scope_id=project.id,
+        )
+
+        response = client.post(
+            f"/api/findings/{finding_id}/status",
+            json={"status": "fixed", "comment": "Patched in image 40.0.2."},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "fixed"
+    assert body["release_context"] is None
+    assert body["related_occurrences"] == []
+
+
 def test_findings_api_peer_review_status_request_does_not_update_status(engine: Engine) -> None:
     with engine.connect() as connection:
         client, session_factory, alpha, _alpha_target, _beta, _beta_target = _prepared_client(
