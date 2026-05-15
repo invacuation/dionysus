@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -10,6 +10,12 @@ from sqlalchemy import Select, and_, false, func, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
+from dionysus.findings.release_inheritance import (
+    RelatedReleaseOccurrence,
+    ReleaseContext,
+    related_occurrences_for_finding,
+    release_context_for_scan_target,
+)
 from dionysus.findings.sla import SlaState, calculate_sla_state
 from dionysus.models.findings import (
     FindingComment,
@@ -132,6 +138,8 @@ class FindingDetail:
         finding: Raw scanner finding occurrence with evidence JSON.
         group: Optional project-level vulnerability group.
         sla_state: Calculated SLA state for the finding.
+        release_context: Resolved release inheritance context when in a release scope.
+        related_occurrences: Same-identity findings in the same release scope.
         comments: Chronological comments and status activity for the finding.
         status_change_requests: Chronological status workflow requests.
     """
@@ -141,6 +149,8 @@ class FindingDetail:
     finding: RawFindingInstance
     group: ProjectVulnerabilityGroup | None
     sla_state: SlaState
+    release_context: ReleaseContext | None
+    related_occurrences: list[RelatedReleaseOccurrence]
     comments: list[FindingComment]
     status_change_requests: list[FindingStatusChangeRequest]
 
@@ -206,8 +216,20 @@ def get_finding_detail(
         finding=row.finding,
         group=row.group,
         sla_state=row.sla_state,
+        release_context=None,
+        related_occurrences=[],
         comments=_finding_comments(session, finding_id),
         status_change_requests=_finding_status_change_requests(session, finding_id),
+    )
+
+
+def with_release_detail(session: Session, detail: FindingDetail) -> FindingDetail:
+    """Attach release context and related occurrences to a loaded finding detail."""
+
+    return replace(
+        detail,
+        release_context=release_context_for_scan_target(session, detail.finding.scan_target),
+        related_occurrences=related_occurrences_for_finding(session, detail.finding),
     )
 
 

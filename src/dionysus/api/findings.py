@@ -18,6 +18,7 @@ from dionysus.findings.queries import (
     SortKey,
     get_finding_detail,
     list_findings,
+    with_release_detail,
 )
 from dionysus.findings.workflow import (
     add_finding_comment,
@@ -169,6 +170,33 @@ class FindingStatusChangeRequestResponse(BaseModel):
     decided_at: datetime | None
 
 
+class FindingReleaseContextResponse(BaseModel):
+    """Release inheritance context for a release-scoped finding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope_asset_id: str
+    scope_path: str
+    version_asset_id: str
+    version: str
+
+
+class FindingRelatedOccurrenceResponse(BaseModel):
+    """Related release occurrence for a finding detail response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    finding_id: str
+    release_version: str
+    project_name: str
+    scan_target_name: str
+    scan_target_path: str
+    status: str
+    present_in_latest_scan: bool
+    installed_version: str | None
+    fixed_version: str | None
+
+
 class FindingDetailResponse(FindingRowResponse):
     """Detailed finding context and evidence for React detail views."""
 
@@ -184,6 +212,8 @@ class FindingDetailResponse(FindingRowResponse):
     artifact_path: str | None
     source_evidence: dict[str, Any]
     project_group: ProjectGroupResponse | None
+    release_context: FindingReleaseContextResponse | None
+    related_occurrences: list[FindingRelatedOccurrenceResponse]
     comments: list[FindingCommentResponse]
     status_change_requests: list[FindingStatusChangeRequestResponse]
 
@@ -299,6 +329,7 @@ def finding_detail_api(
             finding=detail.finding,
             permission="finding:view",
         )
+        detail = with_release_detail(session, detail)
         return _detail_response(
             detail,
             principal_displays=_principal_display_map(
@@ -438,6 +469,7 @@ def finding_status_update_api(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Finding not found",
             )
+        detail = with_release_detail(session, detail)
         response = _detail_response(
             detail,
             principal_displays=_principal_display_map(
@@ -689,6 +721,30 @@ def _detail_response(
         artifact_path=finding.artifact_path,
         source_evidence=finding.source_json,
         project_group=_project_group_response(detail.group),
+        release_context=(
+            None
+            if detail.release_context is None
+            else FindingReleaseContextResponse(
+                scope_asset_id=detail.release_context.scope_asset_id,
+                scope_path=detail.release_context.scope_path,
+                version_asset_id=detail.release_context.version_asset_id,
+                version=detail.release_context.version,
+            )
+        ),
+        related_occurrences=[
+            FindingRelatedOccurrenceResponse(
+                finding_id=occurrence.finding_id,
+                release_version=occurrence.release_version,
+                project_name=occurrence.project_name,
+                scan_target_name=occurrence.scan_target_name,
+                scan_target_path=occurrence.scan_target_path,
+                status=occurrence.status,
+                present_in_latest_scan=occurrence.present_in_latest_scan,
+                installed_version=occurrence.installed_version,
+                fixed_version=occurrence.fixed_version,
+            )
+            for occurrence in detail.related_occurrences
+        ],
         comments=[
             _comment_response(
                 comment,
@@ -890,6 +946,7 @@ def _updated_detail_or_404(session: Session, finding_id: str) -> FindingDetailRe
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Finding not found",
         )
+    detail = with_release_detail(session, detail)
     return _detail_response(
         detail,
         principal_displays=_principal_display_map(

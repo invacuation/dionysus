@@ -17,6 +17,8 @@ from dionysus.models.findings import (
     FindingStatusChangeRequest,
     FindingStatusChangeState,
     RawFindingInstance,
+    Scan,
+    ScannerKind,
 )
 from dionysus.models.identity import PermissionEffect, PrincipalType
 from dionysus.models.inventory import AssetNode, AssetNodeType, Project
@@ -109,6 +111,51 @@ def _project_and_target(
     session.add_all([project, target])
     session.flush()
     return project, target
+
+
+def _release_scope_with_targets(
+    session: Session,
+    *,
+    project: Project,
+    versions: list[str],
+) -> tuple[AssetNode, dict[str, AssetNode]]:
+    releases = AssetNode(
+        project=project,
+        node_type=AssetNodeType.FOLDER,
+        name="releases",
+        path="releases",
+    )
+    scope = AssetNode(
+        project=project,
+        parent=releases,
+        node_type=AssetNodeType.FOLDER,
+        name="V40",
+        path="releases/V40",
+        metadata_json={"release_inheritance_scope": True},
+    )
+    session.add_all([releases, scope])
+    targets: dict[str, AssetNode] = {}
+    for version in versions:
+        version_asset = AssetNode(
+            project=project,
+            parent=scope,
+            node_type=AssetNodeType.FOLDER,
+            name=version,
+            path=f"releases/V40/{version}",
+            metadata_json={"release_version": version},
+        )
+        target = AssetNode(
+            project=project,
+            parent=version_asset,
+            node_type=AssetNodeType.SCAN_TARGET,
+            name=f"api-image-{version}",
+            path=f"releases/V40/{version}/images/api",
+            target_ref=f"registry.example.test/dionysus/api:{version}",
+        )
+        session.add_all([version_asset, target])
+        targets[version] = target
+    session.flush()
+    return scope, targets
 
 
 def _import_two_projects(session: Session) -> tuple[Project, AssetNode, Project, AssetNode]:
@@ -485,8 +532,150 @@ def test_findings_api_detail_returns_joined_evidence(engine: Engine) -> None:
         "status": "open",
         "first_detected_at": "2026-05-01T10:00:00Z",
     }
+    assert body["release_context"] is None
+    assert body["related_occurrences"] == []
     assert body["comments"] == []
     assert body["status_change_requests"] == []
+
+
+def test_findings_api_detail_includes_release_related_occurrences(engine: Engine) -> None:
+    with engine.connect() as connection:
+        Base.metadata.create_all(connection)
+        session_factory = _session_factory_for_connection(connection)
+        with session_factory() as session:
+            project = Project(slug="alpha", name="Alpha")
+            session.add(project)
+            scope, targets = _release_scope_with_targets(
+                session,
+                project=project,
+                versions=["40.0.1", "40.0.2", "40.0.3"],
+            )
+            for version, target in targets.items():
+                import_trivy_report(
+                    session,
+                    project=project,
+                    scan_target=target,
+                    payload=FIXTURE.read_bytes(),
+                    now=datetime(2026, 5, int(version[-1]), 10, 0, tzinfo=UTC),
+                )
+
+            findings_by_version = {
+                version: session.scalars(
+                    select(RawFindingInstance).where(
+                        RawFindingInstance.scan_target_id == target.id,
+                        RawFindingInstance.package_name == "openssl",
+                    )
+                ).one()
+                for version, target in targets.items()
+            }
+            findings_by_version["40.0.1"].status = FindingStatus.ACCEPTED_RISK
+            findings_by_version["40.0.2"].status = FindingStatus.FALSE_POSITIVE
+            findings_by_version["40.0.2"].primary_identifier = " CVE-2026-1001 "
+            findings_by_version["40.0.2"].package_name = " openssl "
+            findings_by_version["40.0.3"].status = FindingStatus.OPEN
+
+            other_report_scan = Scan(
+                project=project,
+                scan_target=targets["40.0.3"],
+                scanner_kind=ScannerKind.TRIVY,
+                report_kind="trivy-sbom-json",
+                parser_version="1.0",
+            )
+            other_report_finding = RawFindingInstance(
+                project=project,
+                scan=other_report_scan,
+                scan_target=targets["40.0.3"],
+                scanner_kind=ScannerKind.TRIVY,
+                scanner_finding_id="CVE-2026-1001:openssl:sbom",
+                dedupe_key=(
+                    f"{targets['40.0.3'].id}|trivy|trivy-sbom-json|"
+                    "CVE-2026-1001|openssl"
+                ),
+                identifiers_json=["CVE-2026-1001"],
+                primary_identifier="CVE-2026-1001",
+                severity="CRITICAL",
+                package_name="openssl",
+                package_version="3.0.11-1",
+                fixed_version="3.0.13-1",
+                first_seen_at=datetime(2026, 5, 3, 11, 0, tzinfo=UTC),
+                last_seen_at=datetime(2026, 5, 3, 11, 0, tzinfo=UTC),
+                present_in_latest_scan=True,
+                status=FindingStatus.MITIGATED,
+            )
+            session.add(other_report_finding)
+            outside_target = AssetNode(
+                project=project,
+                node_type=AssetNodeType.SCAN_TARGET,
+                name="outside-api",
+                path="images/outside-api",
+                target_ref="registry.example.test/dionysus/outside-api:latest",
+            )
+            session.add(outside_target)
+            session.flush()
+            import_trivy_report(
+                session,
+                project=project,
+                scan_target=outside_target,
+                payload=FIXTURE.read_bytes(),
+                now=datetime(2026, 5, 4, 10, 0, tzinfo=UTC),
+            )
+            outside_finding_id = session.scalars(
+                select(RawFindingInstance.id).where(
+                    RawFindingInstance.scan_target_id == outside_target.id,
+                    RawFindingInstance.package_name == "openssl",
+                )
+            ).one()
+            session.commit()
+            finding_id = findings_by_version["40.0.3"].id
+            excluded_finding_id = other_report_finding.id
+            scope_id = scope.id
+        client = _client_with_session_factory(session_factory)
+        _login_user(client, session_factory)
+
+        response = client.get(f"/api/findings/{finding_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["release_context"] == {
+        "scope_asset_id": scope_id,
+        "scope_path": "releases/V40",
+        "version_asset_id": body["release_context"]["version_asset_id"],
+        "version": "40.0.3",
+    }
+    assert [item["release_version"] for item in body["related_occurrences"]] == [
+        "40.0.1",
+        "40.0.2",
+        "40.0.3",
+    ]
+    assert [item["scan_target_path"] for item in body["related_occurrences"]] == [
+        "releases/V40/40.0.1/images/api",
+        "releases/V40/40.0.2/images/api",
+        "releases/V40/40.0.3/images/api",
+    ]
+    assert [item["status"] for item in body["related_occurrences"]] == [
+        "accepted_risk",
+        "false_positive",
+        "open",
+    ]
+    assert {item["finding_id"] for item in body["related_occurrences"]} == {
+        findings_by_version["40.0.1"].id,
+        findings_by_version["40.0.2"].id,
+        finding_id,
+    }
+    assert excluded_finding_id not in {
+        item["finding_id"] for item in body["related_occurrences"]
+    }
+    assert outside_finding_id not in {
+        item["finding_id"] for item in body["related_occurrences"]
+    }
+    assert all(item["project_name"] == "Alpha" for item in body["related_occurrences"])
+    assert all(
+        item["scan_target_name"].startswith("api-image-")
+        for item in body["related_occurrences"]
+    )
+    assert all(item["present_in_latest_scan"] is True for item in body["related_occurrences"])
+    assert all(item["installed_version"] == "3.0.11-1" for item in body["related_occurrences"])
+    assert all(item["fixed_version"] == "3.0.13-1" for item in body["related_occurrences"])
 
 
 def test_findings_api_detail_requires_project_view_permission(engine: Engine) -> None:

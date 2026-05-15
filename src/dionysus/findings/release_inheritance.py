@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from dionysus.models.findings import (
     FindingComment,
@@ -12,6 +12,7 @@ from dionysus.models.findings import (
     FindingStatus,
     FindingStatusChangeRequest,
     RawFindingInstance,
+    Scan,
 )
 from dionysus.models.inventory import AssetNode
 
@@ -25,6 +26,21 @@ class ReleaseContext:
     version_asset_id: str
     version_path: str
     version: str
+
+
+@dataclass(frozen=True)
+class RelatedReleaseOccurrence:
+    """One raw finding occurrence for the same release-scoped finding identity."""
+
+    finding_id: str
+    release_version: str
+    project_name: str
+    scan_target_name: str
+    scan_target_path: str
+    status: str
+    present_in_latest_scan: bool
+    installed_version: str | None
+    fixed_version: str | None
 
 
 def _metadata(node: AssetNode) -> dict[str, object] | None:
@@ -109,6 +125,92 @@ def finding_inheritance_identity(primary_identifier: str, package_name: str | No
         raise ValueError("primary_identifier must not be blank")
     normalized_package = package_name.strip() if package_name is not None else ""
     return f"{normalized_identifier}|{normalized_package}"
+
+
+def related_occurrences_for_finding(
+    session: Session,
+    finding: RawFindingInstance,
+) -> list[RelatedReleaseOccurrence]:
+    """Return same-identity raw finding occurrences in the same release scope."""
+
+    context = release_context_for_scan_target(session, finding.scan_target)
+    if context is None:
+        return []
+    finding_identity = finding_inheritance_identity(
+        finding.primary_identifier,
+        finding.package_name,
+    )
+    normalized_identifier = finding.primary_identifier.strip()
+    normalized_package = finding.package_name.strip() if finding.package_name is not None else ""
+    scope_path_like = _escape_like_pattern(context.scope_path)
+
+    candidates_statement = (
+        select(RawFindingInstance)
+        .join(Scan, RawFindingInstance.scan_id == Scan.id)
+        .join(AssetNode, RawFindingInstance.scan_target_id == AssetNode.id)
+        .options(
+            selectinload(RawFindingInstance.project),
+            selectinload(RawFindingInstance.scan_target),
+        )
+        .where(
+            RawFindingInstance.project_id == finding.project_id,
+            RawFindingInstance.scanner_kind == str(finding.scanner_kind),
+            Scan.report_kind == finding.scan.report_kind,
+            func.trim(RawFindingInstance.primary_identifier) == normalized_identifier,
+            func.trim(func.coalesce(RawFindingInstance.package_name, "")) == normalized_package,
+            or_(
+                AssetNode.path == context.scope_path,
+                AssetNode.path.like(f"{scope_path_like}/%", escape="\\"),
+            ),
+        )
+    )
+
+    occurrences: list[tuple[ReleaseContext, RawFindingInstance]] = []
+    for candidate in session.scalars(candidates_statement).all():
+        if (
+            finding_inheritance_identity(
+                candidate.primary_identifier,
+                candidate.package_name,
+            )
+            != finding_identity
+        ):
+            continue
+        candidate_context = release_context_for_scan_target(session, candidate.scan_target)
+        if candidate_context is None:
+            continue
+        if candidate_context.scope_asset_id != context.scope_asset_id:
+            continue
+        occurrences.append((candidate_context, candidate))
+
+    occurrences.sort(key=lambda item: _release_occurrence_sort_key(item[0], item[1]))
+    return [
+        RelatedReleaseOccurrence(
+            finding_id=candidate.id,
+            release_version=candidate_context.version,
+            project_name=candidate.project.name,
+            scan_target_name=candidate.scan_target.name,
+            scan_target_path=candidate.scan_target.path,
+            status=candidate.status,
+            present_in_latest_scan=candidate.present_in_latest_scan,
+            installed_version=candidate.package_version,
+            fixed_version=candidate.fixed_version,
+        )
+        for candidate_context, candidate in occurrences
+    ]
+
+
+def _release_occurrence_sort_key(
+    context: ReleaseContext,
+    finding: RawFindingInstance,
+) -> tuple[int, tuple[int, ...] | tuple[str], str]:
+    numeric_version = _parse_numeric_version(context.version)
+    if numeric_version is not None:
+        return (0, numeric_version, finding.id)
+    return (1, (context.version,), finding.id)
+
+
+def _escape_like_pattern(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _parse_numeric_version(version: str) -> tuple[int, ...] | None:
