@@ -69,6 +69,21 @@ type GroupMembership struct {
 	UpdatedAt     time.Time
 }
 
+type ImportAttempt struct {
+	ID                    string
+	ProjectID             string
+	AssetNodeID           sql.NullString
+	UploaderPrincipalType sql.NullString
+	UploaderPrincipalID   sql.NullString
+	Status                string
+	ParserName            string
+	SanitizedMessage      sql.NullString
+	CorrelationID         sql.NullString
+	MetadataJson          string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
 type MachineCredential struct {
 	ID                 string
 	Name               string
@@ -129,6 +144,61 @@ type Project struct {
 	UnknownSlaDays                    int64
 	CreatedAt                         time.Time
 	UpdatedAt                         time.Time
+}
+
+type ProjectVulnerabilityGroup struct {
+	ID                        string
+	ProjectID                 string
+	PrimaryIdentifier         string
+	AdditionalIdentifiersJson string
+	FirstDetectedAt           time.Time
+	Severity                  string
+	Status                    string
+	DedupeKey                 string
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+}
+
+type RawFindingInstance struct {
+	ID                  string
+	ProjectID           string
+	ScanID              string
+	ScanTargetID        string
+	ScannerKind         string
+	ScannerFindingID    string
+	DedupeKey           string
+	IdentifiersJson     string
+	PrimaryIdentifier   string
+	Severity            string
+	CvssJson            string
+	PackageName         sql.NullString
+	PackageVersion      sql.NullString
+	FixedVersion        sql.NullString
+	ArtifactName        sql.NullString
+	ArtifactType        sql.NullString
+	ArtifactPath        sql.NullString
+	FirstSeenAt         time.Time
+	LastSeenAt          time.Time
+	PresentInLatestScan bool
+	Status              string
+	ReferencesJson      string
+	SourceJson          string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type Scan struct {
+	ID             string
+	ProjectID      string
+	ScanTargetID   string
+	ScannerKind    string
+	ReportKind     string
+	ParserVersion  string
+	ScanStartedAt  sql.NullTime
+	ScanFinishedAt sql.NullTime
+	MetadataJson   string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type User struct {

@@ -126,6 +126,86 @@ CREATE TABLE asset_nodes (
     UNIQUE (project_id, path)
 );
 
+CREATE TABLE import_attempts (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    asset_node_id VARCHAR,
+    uploader_principal_type VARCHAR(50),
+    uploader_principal_id VARCHAR(36),
+    status VARCHAR(20) NOT NULL,
+    parser_name VARCHAR(120) NOT NULL,
+    sanitized_message TEXT,
+    correlation_id VARCHAR(120),
+    metadata_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (asset_node_id) REFERENCES asset_nodes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE scans (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    scan_target_id VARCHAR NOT NULL,
+    scanner_kind VARCHAR(50) NOT NULL,
+    report_kind VARCHAR(120) NOT NULL,
+    parser_version VARCHAR(50) NOT NULL,
+    scan_started_at DATETIME,
+    scan_finished_at DATETIME,
+    metadata_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (scan_target_id) REFERENCES asset_nodes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE project_vulnerability_groups (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    primary_identifier VARCHAR(255) NOT NULL,
+    additional_identifiers_json TEXT NOT NULL,
+    first_detected_at DATETIME NOT NULL,
+    severity VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    dedupe_key VARCHAR(512) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, dedupe_key)
+);
+
+CREATE TABLE raw_finding_instances (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    scan_id VARCHAR NOT NULL,
+    scan_target_id VARCHAR NOT NULL,
+    scanner_kind VARCHAR(50) NOT NULL,
+    scanner_finding_id TEXT NOT NULL,
+    dedupe_key VARCHAR(512) NOT NULL,
+    identifiers_json TEXT NOT NULL,
+    primary_identifier VARCHAR(255) NOT NULL,
+    severity VARCHAR(50) NOT NULL,
+    cvss_json TEXT NOT NULL,
+    package_name VARCHAR(255),
+    package_version VARCHAR(255),
+    fixed_version VARCHAR(255),
+    artifact_name TEXT,
+    artifact_type VARCHAR(120),
+    artifact_path TEXT,
+    first_seen_at DATETIME NOT NULL,
+    last_seen_at DATETIME NOT NULL,
+    present_in_latest_scan BOOLEAN NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    references_json TEXT NOT NULL,
+    source_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+    FOREIGN KEY (scan_target_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
+    UNIQUE (scan_target_id, dedupe_key)
+);
+
 CREATE TABLE user_sessions (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,
