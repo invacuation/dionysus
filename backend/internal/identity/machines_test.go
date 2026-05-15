@@ -295,6 +295,59 @@ func insertMachineToken(t *testing.T, conn *sql.DB, fixture machineTokenFixture)
 	}
 }
 
+type machineRefreshTokenFixture struct {
+	ID                  string
+	MachineCredentialID string
+	RawToken            string
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func insertMachineRefreshToken(t *testing.T, conn *sql.DB, fixture machineRefreshTokenFixture) {
+	t.Helper()
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`INSERT INTO machine_refresh_tokens (
+			id,
+			machine_credential_id,
+			token_digest,
+			expires_at,
+			revoked_at,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		fixture.ID,
+		fixture.MachineCredentialID,
+		security.TokenDigest(fixture.RawToken),
+		fixture.ExpiresAt,
+		fixture.RevokedAt,
+		fixture.CreatedAt,
+		fixture.UpdatedAt,
+	); err != nil {
+		t.Fatalf("insert machine refresh token: %v", err)
+	}
+}
+
+func assertRefreshTokenRevoked(t *testing.T, conn *sql.DB, id string, want time.Time) {
+	t.Helper()
+	var revokedAt sql.NullTime
+	if err := conn.QueryRowContext(
+		context.Background(),
+		"SELECT revoked_at FROM machine_refresh_tokens WHERE id = ?",
+		id,
+	).Scan(&revokedAt); err != nil {
+		t.Fatalf("select refresh token revoked_at: %v", err)
+	}
+	if !revokedAt.Valid {
+		t.Fatal("refresh token revoked_at is NULL, want timestamp")
+	}
+	if !revokedAt.Time.Equal(want) {
+		t.Fatalf("refresh token revoked_at = %s, want %s", revokedAt.Time, want)
+	}
+}
+
 func assertMachineTokenCounts(t *testing.T, conn *sql.DB, wantAccess int, wantRefresh int) {
 	t.Helper()
 	var gotAccess int

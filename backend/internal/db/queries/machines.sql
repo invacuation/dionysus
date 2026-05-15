@@ -71,3 +71,30 @@ RETURNING
     revoked_at,
     created_at,
     updated_at;
+
+-- name: GetMachineRefreshTokenByDigest :one
+SELECT
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at
+FROM machine_refresh_tokens
+WHERE token_digest = ?;
+
+-- name: RevokeMachineRefreshToken :one
+UPDATE machine_refresh_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at;

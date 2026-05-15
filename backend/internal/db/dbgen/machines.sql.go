@@ -7,6 +7,7 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -170,6 +171,34 @@ func (q *Queries) GetMachineCredentialByClientID(ctx context.Context, clientID s
 	return i, err
 }
 
+const getMachineRefreshTokenByDigest = `-- name: GetMachineRefreshTokenByDigest :one
+SELECT
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at
+FROM machine_refresh_tokens
+WHERE token_digest = ?
+`
+
+func (q *Queries) GetMachineRefreshTokenByDigest(ctx context.Context, tokenDigest string) (MachineRefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, getMachineRefreshTokenByDigest, tokenDigest)
+	var i MachineRefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.MachineCredentialID,
+		&i.TokenDigest,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getMachineTokenByDigest = `-- name: GetMachineTokenByDigest :one
 SELECT
     id,
@@ -186,6 +215,43 @@ WHERE token_digest = ?
 func (q *Queries) GetMachineTokenByDigest(ctx context.Context, tokenDigest string) (MachineToken, error) {
 	row := q.db.QueryRowContext(ctx, getMachineTokenByDigest, tokenDigest)
 	var i MachineToken
+	err := row.Scan(
+		&i.ID,
+		&i.MachineCredentialID,
+		&i.TokenDigest,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const revokeMachineRefreshToken = `-- name: RevokeMachineRefreshToken :one
+UPDATE machine_refresh_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type RevokeMachineRefreshTokenParams struct {
+	RevokedAt sql.NullTime
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) RevokeMachineRefreshToken(ctx context.Context, arg RevokeMachineRefreshTokenParams) (MachineRefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, revokeMachineRefreshToken, arg.RevokedAt, arg.UpdatedAt, arg.ID)
+	var i MachineRefreshToken
 	err := row.Scan(
 		&i.ID,
 		&i.MachineCredentialID,

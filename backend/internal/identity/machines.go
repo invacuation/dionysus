@@ -20,6 +20,13 @@ type MachineClientSecretExchange struct {
 	RefreshExpiresInMinutes int
 }
 
+type MachineRefreshTokenExchange struct {
+	RawRefreshToken         string
+	Now                     time.Time
+	AccessExpiresInMinutes  int
+	RefreshExpiresInMinutes int
+}
+
 type MachineTokenPair struct {
 	AccessToken        string
 	RefreshToken       string
@@ -70,6 +77,76 @@ func ExchangeMachineClientSecret(
 		RefreshToken:       refreshToken,
 		AccessTokenRecord:  accessTokenRecord,
 		RefreshTokenRecord: refreshTokenRecord,
+	}, nil
+}
+
+func RefreshMachineToken(
+	ctx context.Context,
+	conn *sql.DB,
+	exchange MachineRefreshTokenExchange,
+) (*MachineTokenPair, error) {
+	queries := dbgen.New(conn)
+	digest := security.TokenDigest(exchange.RawRefreshToken)
+	refreshTokenRecord, err := queries.GetMachineRefreshTokenByDigest(ctx, digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if subtle.ConstantTimeCompare([]byte(refreshTokenRecord.TokenDigest), []byte(digest)) != 1 {
+		return nil, nil
+	}
+
+	now := exchange.Now.UTC()
+	if refreshTokenRecord.RevokedAt.Valid || !refreshTokenRecord.ExpiresAt.UTC().After(now) {
+		return nil, nil
+	}
+
+	credential, err := queries.GetMachineCredential(ctx, refreshTokenRecord.MachineCredentialID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !machineCredentialIsActive(credential) {
+		return nil, nil
+	}
+
+	if _, err := queries.RevokeMachineRefreshToken(ctx, dbgen.RevokeMachineRefreshTokenParams{
+		RevokedAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+		ID:        refreshTokenRecord.ID,
+	}); err != nil {
+		return nil, err
+	}
+
+	accessToken, accessTokenRecord, err := issueMachineAccessToken(
+		ctx,
+		queries,
+		credential,
+		now,
+		exchange.AccessExpiresInMinutes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, newRefreshTokenRecord, err := mintMachineRefreshToken(
+		ctx,
+		queries,
+		credential,
+		now,
+		exchange.RefreshExpiresInMinutes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &MachineTokenPair{
+		AccessToken:        accessToken,
+		RefreshToken:       refreshToken,
+		AccessTokenRecord:  accessTokenRecord,
+		RefreshTokenRecord: newRefreshTokenRecord,
 	}, nil
 }
 
