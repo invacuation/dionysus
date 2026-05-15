@@ -55,6 +55,21 @@ SELECT
 FROM groups
 WHERE name = ?;
 
+-- name: UpdateGroup :one
+UPDATE groups
+SET
+    display_name = ?,
+    is_protected = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at;
+
 -- name: CreateGroup :one
 INSERT INTO groups (
     id,

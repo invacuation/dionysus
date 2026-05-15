@@ -61,11 +61,14 @@ func ChangeUserPassword(ctx context.Context, conn *sql.DB, userID string, curren
 var ErrCurrentPasswordIncorrect = errors.New("current password is incorrect")
 
 func CreateUser(ctx context.Context, conn *sql.DB, username string, displayName string, password string, now time.Time) (dbgen.User, error) {
+	return createUserWithQueries(ctx, dbgen.New(conn), username, displayName, password, now)
+}
+
+func createUserWithQueries(ctx context.Context, queries *dbgen.Queries, username string, displayName string, password string, now time.Time) (dbgen.User, error) {
 	passwordHash, err := security.HashPassword(password)
 	if err != nil {
 		return dbgen.User{}, err
 	}
-	queries := dbgen.New(conn)
 	now = now.UTC()
 	user, err := queries.CreateUser(ctx, dbgen.CreateUserParams{
 		ID:          uuid.NewString(),

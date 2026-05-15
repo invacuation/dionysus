@@ -565,3 +565,45 @@ func (q *Queries) ListPermissionAssignments(ctx context.Context) ([]PermissionAs
 	}
 	return items, nil
 }
+
+const updateGroup = `-- name: UpdateGroup :one
+UPDATE groups
+SET
+    display_name = ?,
+    is_protected = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+`
+
+type UpdateGroupParams struct {
+	DisplayName string
+	IsProtected bool
+	UpdatedAt   time.Time
+	ID          string
+}
+
+func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error) {
+	row := q.db.QueryRowContext(ctx, updateGroup,
+		arg.DisplayName,
+		arg.IsProtected,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.IsProtected,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

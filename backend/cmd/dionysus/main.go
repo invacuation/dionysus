@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/invacuation/dionysus/backend/internal/app"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db"
 	httpapi "github.com/invacuation/dionysus/backend/internal/http"
+	"github.com/invacuation/dionysus/backend/internal/identity"
 )
 
 func main() {
@@ -25,6 +28,11 @@ func main() {
 			log.Printf("close database: %v", err)
 		}
 	}()
+	if user, err := identity.BootstrapAdminFromSettings(context.Background(), conn, settings, time.Now().UTC()); err != nil {
+		log.Fatalf("bootstrap admin: %v", err)
+	} else if user != nil {
+		log.Printf("bootstrapped admin user %s", user.Username)
+	}
 
 	server := &http.Server{
 		Addr:    ":8000",
