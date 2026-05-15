@@ -11,6 +11,61 @@ import (
 	"time"
 )
 
+const createMachineCredential = `-- name: CreateMachineCredential :one
+INSERT INTO machine_credentials (
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type CreateMachineCredentialParams struct {
+	ID                 string
+	Name               string
+	ClientID           string
+	ClientSecretDigest string
+	IsActive           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+func (q *Queries) CreateMachineCredential(ctx context.Context, arg CreateMachineCredentialParams) (MachineCredential, error) {
+	row := q.db.QueryRowContext(ctx, createMachineCredential,
+		arg.ID,
+		arg.Name,
+		arg.ClientID,
+		arg.ClientSecretDigest,
+		arg.IsActive,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i MachineCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ClientID,
+		&i.ClientSecretDigest,
+		&i.IsActive,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createMachineRefreshToken = `-- name: CreateMachineRefreshToken :one
 INSERT INTO machine_refresh_tokens (
     id,
@@ -225,6 +280,52 @@ func (q *Queries) GetMachineTokenByDigest(ctx context.Context, tokenDigest strin
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listMachineCredentials = `-- name: ListMachineCredentials :many
+SELECT
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+FROM machine_credentials
+ORDER BY created_at
+`
+
+func (q *Queries) ListMachineCredentials(ctx context.Context) ([]MachineCredential, error) {
+	rows, err := q.db.QueryContext(ctx, listMachineCredentials)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MachineCredential
+	for rows.Next() {
+		var i MachineCredential
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ClientID,
+			&i.ClientSecretDigest,
+			&i.IsActive,
+			&i.RevokedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeMachineRefreshToken = `-- name: RevokeMachineRefreshToken :one

@@ -325,6 +325,43 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE machine_credentials (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			name VARCHAR(150) NOT NULL UNIQUE,
+			client_id VARCHAR(64) NOT NULL UNIQUE,
+			client_secret_digest VARCHAR(64) NOT NULL,
+			is_active BOOLEAN NOT NULL,
+			revoked_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE group_memberships (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			group_id VARCHAR NOT NULL,
+			principal_type VARCHAR(20) NOT NULL,
+			principal_id VARCHAR(36) NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE groups (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			name VARCHAR(150) NOT NULL,
+			display_name VARCHAR(200) NOT NULL,
+			is_protected BOOLEAN NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE permission_assignments (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			principal_type VARCHAR(20) NOT NULL,
+			principal_id VARCHAR(36) NOT NULL,
+			permission VARCHAR(120) NOT NULL,
+			effect VARCHAR(20) NOT NULL,
+			scope_type VARCHAR(50),
+			scope_id VARCHAR(36),
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := conn.ExecContext(context.Background(), statement); err != nil {
@@ -403,5 +440,40 @@ func assertHTTPSessionRevoked(t *testing.T, conn *sql.DB) {
 	}
 	if !revokedAt.Valid {
 		t.Fatal("revoked_at is NULL, want timestamp")
+	}
+}
+
+type httpPermissionFixture struct {
+	ID            string
+	PrincipalType string
+	PrincipalID   string
+	Permission    string
+	Effect        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func insertHTTPPermission(t *testing.T, conn *sql.DB, fixture httpPermissionFixture) {
+	t.Helper()
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`INSERT INTO permission_assignments (
+			id,
+			principal_type,
+			principal_id,
+			permission,
+			effect,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		fixture.ID,
+		fixture.PrincipalType,
+		fixture.PrincipalID,
+		fixture.Permission,
+		fixture.Effect,
+		fixture.CreatedAt,
+		fixture.UpdatedAt,
+	); err != nil {
+		t.Fatalf("insert permission: %v", err)
 	}
 }

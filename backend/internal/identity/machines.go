@@ -80,6 +80,32 @@ func ExchangeMachineClientSecret(
 	}, nil
 }
 
+func CreateMachineCredential(
+	ctx context.Context,
+	conn *sql.DB,
+	name string,
+	now time.Time,
+) (string, dbgen.MachineCredential, error) {
+	rawSecret, err := security.GenerateToken()
+	if err != nil {
+		return "", dbgen.MachineCredential{}, err
+	}
+	queries := dbgen.New(conn)
+	credential, err := queries.CreateMachineCredential(ctx, dbgen.CreateMachineCredentialParams{
+		ID:                 uuid.NewString(),
+		Name:               name,
+		ClientID:           uuid.NewString(),
+		ClientSecretDigest: security.TokenDigest(rawSecret),
+		IsActive:           true,
+		CreatedAt:          now.UTC(),
+		UpdatedAt:          now.UTC(),
+	})
+	if err != nil {
+		return "", dbgen.MachineCredential{}, err
+	}
+	return rawSecret, credential, nil
+}
+
 func RefreshMachineToken(
 	ctx context.Context,
 	conn *sql.DB,

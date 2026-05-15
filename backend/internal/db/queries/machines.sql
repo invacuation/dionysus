@@ -36,6 +36,39 @@ SELECT
 FROM machine_credentials
 WHERE client_id = ?;
 
+-- name: ListMachineCredentials :many
+SELECT
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+FROM machine_credentials
+ORDER BY created_at;
+
+-- name: CreateMachineCredential :one
+INSERT INTO machine_credentials (
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at;
+
 -- name: CreateMachineToken :one
 INSERT INTO machine_tokens (
     id,
