@@ -6,3 +6,17 @@ CREATE TABLE app_security_settings (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE user_sessions (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    user_id VARCHAR NOT NULL,
+    token_digest VARCHAR(64) NOT NULL,
+    user_agent TEXT,
+    ip_address VARCHAR(64),
+    expires_at DATETIME NOT NULL,
+    idle_expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    last_seen_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);

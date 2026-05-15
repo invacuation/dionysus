@@ -17,3 +17,17 @@ type AppSecuritySetting struct {
 	CreatedAt                       time.Time
 	UpdatedAt                       time.Time
 }
+
+type UserSession struct {
+	ID            string
+	UserID        string
+	TokenDigest   string
+	UserAgent     sql.NullString
+	IpAddress     sql.NullString
+	ExpiresAt     time.Time
+	IdleExpiresAt time.Time
+	RevokedAt     sql.NullTime
+	LastSeenAt    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
