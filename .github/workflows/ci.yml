@@ -27,7 +27,7 @@ jobs:
           fi
 
   backend-quality:
-    name: backend quality
+    name: python backend quality
     runs-on: ubuntu-latest
     steps:
       # actions/checkout@v4
@@ -65,6 +65,26 @@ jobs:
       - name: run backend tests
         working-directory: python
         run: uv run pytest
+
+  go-backend-quality:
+    name: go backend quality
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: set up go
+        # actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: run go tests
+        working-directory: backend
+        run: go test ./...
 
   migrations:
     name: database migrations
