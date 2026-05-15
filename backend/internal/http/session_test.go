@@ -110,6 +110,58 @@ func TestAuthSessionRejectsInvalidCredentials(t *testing.T) {
 	assertHTTPSessionCount(t, conn, 0)
 }
 
+func TestAuthSessionDeleteRevokesBrowserSession(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := httptest.NewRecorder()
+	loginRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/auth/session",
+		strings.NewReader(`{"username":"alice","password":"correct horse battery staple"}`),
+	)
+	loginRequest.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(loginResponse, loginRequest)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want %d", loginResponse.Code, http.StatusOK)
+	}
+
+	logoutResponse := httptest.NewRecorder()
+	logoutRequest := httptest.NewRequest(http.MethodDelete, "/api/auth/session", nil)
+	for _, cookie := range loginResponse.Result().Cookies() {
+		logoutRequest.AddCookie(cookie)
+	}
+	router.ServeHTTP(logoutResponse, logoutRequest)
+
+	if logoutResponse.Code != http.StatusNoContent {
+		t.Fatalf("logout status = %d, want %d", logoutResponse.Code, http.StatusNoContent)
+	}
+	assertHTTPSessionRevoked(t, conn)
+
+	meResponse := httptest.NewRecorder()
+	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	for _, cookie := range loginResponse.Result().Cookies() {
+		meRequest.AddCookie(cookie)
+	}
+	router.ServeHTTP(meResponse, meRequest)
+	if meResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("me status after logout = %d, want %d", meResponse.Code, http.StatusUnauthorized)
+	}
+}
+
 func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := db.Open("sqlite:///:memory:")
@@ -200,5 +252,16 @@ func assertHTTPSessionCount(t *testing.T, conn *sql.DB, want int) {
 	}
 	if got != want {
 		t.Fatalf("session count = %d, want %d", got, want)
+	}
+}
+
+func assertHTTPSessionRevoked(t *testing.T, conn *sql.DB) {
+	t.Helper()
+	var revokedAt sql.NullTime
+	if err := conn.QueryRowContext(context.Background(), "SELECT revoked_at FROM user_sessions").Scan(&revokedAt); err != nil {
+		t.Fatalf("select revoked_at: %v", err)
+	}
+	if !revokedAt.Valid {
+		t.Fatal("revoked_at is NULL, want timestamp")
 	}
 }

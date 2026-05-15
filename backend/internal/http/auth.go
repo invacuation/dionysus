@@ -36,6 +36,9 @@ func mountAuthRoutes(router chi.Router, settings config.Settings, deps Dependenc
 	router.Post("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
 		createBrowserSession(w, r, settings, deps)
 	})
+	router.Delete("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		deleteBrowserSession(w, r, settings, deps)
+	})
 	router.Get("/api/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		getCurrentActor(w, r, settings, deps)
 	})
@@ -99,6 +102,41 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 		SessionCookiePresent:    true,
 		LocalAuthEnabled:        settings.LocalAuthEnabled,
 	})
+}
+
+func deleteBrowserSession(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if deps.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
+		return
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		session, err := identity.GetActiveSession(
+			r.Context(),
+			deps.DB,
+			cookie.Value,
+			time.Now().UTC(),
+			settings.SessionIdleTimeoutMinutes,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+		if session != nil {
+			if err := identity.RevokeSession(r.Context(), deps.DB, *session, time.Now().UTC()); err != nil {
+				writeError(w, http.StatusInternalServerError, "Internal Server Error")
+				return
+			}
+		}
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {

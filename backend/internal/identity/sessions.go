@@ -88,6 +88,16 @@ func GetActiveSession(
 	return &touched, nil
 }
 
+func RevokeSession(ctx context.Context, conn *sql.DB, session dbgen.UserSession, now time.Time) error {
+	queries := dbgen.New(conn)
+	_, err := queries.RevokeUserSession(ctx, dbgen.RevokeUserSessionParams{
+		RevokedAt: sql.NullTime{Time: now.UTC(), Valid: true},
+		UpdatedAt: now.UTC(),
+		ID:        session.ID,
+	})
+	return err
+}
+
 func nullStringFromOptional(value *string) sql.NullString {
 	if value == nil {
 		return sql.NullString{}

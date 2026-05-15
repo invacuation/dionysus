@@ -117,6 +117,51 @@ func (q *Queries) GetUserSessionByTokenDigest(ctx context.Context, tokenDigest s
 	return i, err
 }
 
+const revokeUserSession = `-- name: RevokeUserSession :one
+UPDATE user_sessions
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    user_id,
+    token_digest,
+    user_agent,
+    ip_address,
+    expires_at,
+    idle_expires_at,
+    revoked_at,
+    last_seen_at,
+    created_at,
+    updated_at
+`
+
+type RevokeUserSessionParams struct {
+	RevokedAt sql.NullTime
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) RevokeUserSession(ctx context.Context, arg RevokeUserSessionParams) (UserSession, error) {
+	row := q.db.QueryRowContext(ctx, revokeUserSession, arg.RevokedAt, arg.UpdatedAt, arg.ID)
+	var i UserSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenDigest,
+		&i.UserAgent,
+		&i.IpAddress,
+		&i.ExpiresAt,
+		&i.IdleExpiresAt,
+		&i.RevokedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const touchUserSession = `-- name: TouchUserSession :one
 UPDATE user_sessions
 SET
