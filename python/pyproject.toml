@@ -2,7 +2,7 @@
 name = "dionysus"
 version = "0.7.1"
 description = "Security scan triage web application"
-readme = "README.md"
+readme = "../README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.13.3",

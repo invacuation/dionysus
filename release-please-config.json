@@ -3,11 +3,16 @@
   "packages": {
     ".": {
       "package-name": "dionysus",
-      "release-type": "python",
+      "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "include-component-in-tag": false,
       "extra-files": [
+        {
+          "type": "toml",
+          "path": "python/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
         {
           "type": "json",
           "path": "frontend/package.json",
@@ -15,7 +20,7 @@
         },
         {
           "type": "toml",
-          "path": "uv.lock",
+          "path": "python/uv.lock",
           "jsonpath": "$.package[?(@.name.value==\"dionysus\")].version"
         }
       ]

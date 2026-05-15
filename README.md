@@ -13,6 +13,7 @@ release-please opens dedicated release PRs with the package metadata and changel
 Install Python dependencies:
 
 ```bash
+cd python
 uv sync
 ```
 
@@ -26,6 +27,7 @@ bun install
 Run the backend only:
 
 ```bash
+cd python
 uv run uvicorn dionysus.app:create_app --factory --reload
 ```
 
@@ -121,10 +123,12 @@ The app is available at `http://127.0.0.1:8000`.
 Run this before committing code changes:
 
 ```bash
+cd python
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check src tests migrations
 uv run pytest
+cd ..
 cd frontend
 bun run typecheck
 bun run e2e
@@ -134,11 +138,13 @@ bun run build
 Create a migration after model changes:
 
 ```bash
+cd python
 uv run alembic revision --autogenerate -m "describe change"
 ```
 
 Apply migrations:
 
 ```bash
+cd python
 uv run alembic upgrade head
 ```

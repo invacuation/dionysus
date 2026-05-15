@@ -2,12 +2,13 @@ import json
 import tomllib
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).parents[1]
+PYTHON_DIR = Path(__file__).parents[1]
+ROOT_DIR = Path(__file__).parents[2]
 CI_WORKFLOW = ROOT_DIR / ".github" / "workflows" / "ci.yml"
-RELEASE_WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "release.yml"
+RELEASE_WORKFLOW = ROOT_DIR / ".github" / "workflows" / "release.yml"
 RELEASE_PLEASE_CONFIG = ROOT_DIR / "release-please-config.json"
-PYPROJECT = ROOT_DIR / "pyproject.toml"
-UV_LOCK = ROOT_DIR / "uv.lock"
+PYPROJECT = PYTHON_DIR / "pyproject.toml"
+UV_LOCK = PYTHON_DIR / "uv.lock"
 
 
 def test_release_image_publish_builds_multi_arch_manifest() -> None:
@@ -35,17 +36,28 @@ def test_uv_lock_package_version_matches_pyproject() -> None:
     assert locked_package["version"] == project_version
 
 
-def test_release_please_updates_uv_lock_package_version() -> None:
+def test_release_please_updates_python_package_versions() -> None:
     config = json.loads(RELEASE_PLEASE_CONFIG.read_text())
 
+    pyproject_extra_file = next(
+        extra_file
+        for extra_file in config["packages"]["."]["extra-files"]
+        if extra_file["path"] == "python/pyproject.toml"
+    )
     uv_lock_extra_file = next(
         extra_file
         for extra_file in config["packages"]["."]["extra-files"]
-        if extra_file["path"] == "uv.lock"
+        if extra_file["path"] == "python/uv.lock"
     )
 
+    assert config["packages"]["."]["release-type"] == "simple"
+    assert pyproject_extra_file == {
+        "type": "toml",
+        "path": "python/pyproject.toml",
+        "jsonpath": "$.project.version",
+    }
     assert uv_lock_extra_file == {
         "type": "toml",
-        "path": "uv.lock",
+        "path": "python/uv.lock",
         "jsonpath": '$.package[?(@.name.value=="dionysus")].version',
     }

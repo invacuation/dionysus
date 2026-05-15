@@ -43,21 +43,27 @@ jobs:
         run: uv python install 3.13
 
       - name: check lockfile
+        working-directory: python
         run: uv lock --check
 
       - name: install backend dependencies
+        working-directory: python
         run: uv sync --dev
 
       - name: run ruff
+        working-directory: python
         run: uv run ruff check .
 
       - name: check formatting
+        working-directory: python
         run: uv run ruff format --check .
 
       - name: run ty
+        working-directory: python
         run: uv run ty check src tests migrations
 
       - name: run backend tests
+        working-directory: python
         run: uv run pytest
 
   migrations:
@@ -77,15 +83,19 @@ jobs:
         run: uv python install 3.13
 
       - name: install backend dependencies
+        working-directory: python
         run: uv sync --dev
 
       - name: upgrade to head
+        working-directory: python
         run: uv run alembic upgrade head
 
       - name: downgrade to base
+        working-directory: python
         run: uv run alembic downgrade base
 
       - name: upgrade again
+        working-directory: python
         run: uv run alembic upgrade head
 
   frontend-quality:

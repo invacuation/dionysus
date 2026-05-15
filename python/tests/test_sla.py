@@ -53,7 +53,7 @@ def test_project_has_default_severity_sla_days(db_session: Session) -> None:
 
 
 def test_alembic_revision_0005_chains_after_imports_findings() -> None:
-    revision_path = Path("migrations/versions/0005_project_sla_fields.py")
+    revision_path = Path(__file__).parents[1] / "migrations/versions/0005_project_sla_fields.py"
     spec = importlib.util.spec_from_file_location("revision_0005_project_sla_fields", revision_path)
     assert spec is not None
     assert spec.loader is not None

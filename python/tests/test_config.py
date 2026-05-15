@@ -34,7 +34,7 @@ def test_default_settings_use_local_sqlite(monkeypatch) -> None:
     settings = DotenvFreeAppSettings()
 
     assert settings.environment is Environment.LOCAL
-    assert settings.database_url == "sqlite:///./var/dionysus.db"
+    assert settings.database_url == "sqlite:///../var/dionysus.db"
     assert settings.session_idle_timeout_minutes == 30
     assert settings.session_absolute_timeout_minutes == 480
     assert settings.machine_access_token_expires_minutes == 15

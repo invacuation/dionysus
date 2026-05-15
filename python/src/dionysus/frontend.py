@@ -18,7 +18,7 @@ def default_frontend_dist() -> Path:
         Path to the repository-level ``frontend/dist`` directory.
     """
 
-    return Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    return Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
 def mount_frontend_assets(app: FastAPI, frontend_dist: Path) -> None:

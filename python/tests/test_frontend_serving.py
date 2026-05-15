@@ -12,7 +12,7 @@ from conftest import make_prepared_app_settings
 from dionysus.app import create_app
 from dionysus.config import AppSettings
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
 
 

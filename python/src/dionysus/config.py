@@ -26,7 +26,7 @@ class AppSettings(BaseSettings):
     )
 
     environment: Environment = Environment.LOCAL
-    database_url: str = "sqlite:///./var/dionysus.db"
+    database_url: str = "sqlite:///../var/dionysus.db"
     session_idle_timeout_minutes: int = Field(default=30, ge=1)
     session_absolute_timeout_minutes: int = Field(default=480, ge=1)
     machine_access_token_expires_minutes: int = Field(default=15, ge=1)
