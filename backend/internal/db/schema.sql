@@ -206,6 +206,42 @@ CREATE TABLE raw_finding_instances (
     UNIQUE (scan_target_id, dedupe_key)
 );
 
+CREATE TABLE finding_comments (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    finding_id VARCHAR NOT NULL,
+    project_id VARCHAR NOT NULL,
+    author_principal_type VARCHAR(20) NOT NULL,
+    author_principal_id VARCHAR(36) NOT NULL,
+    body TEXT NOT NULL,
+    is_system BOOLEAN NOT NULL,
+    status_from VARCHAR(50),
+    status_to VARCHAR(50),
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (finding_id) REFERENCES raw_finding_instances(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE finding_status_change_requests (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    finding_id VARCHAR NOT NULL,
+    project_id VARCHAR NOT NULL,
+    requester_principal_type VARCHAR(20) NOT NULL,
+    requester_principal_id VARCHAR(36) NOT NULL,
+    reviewer_principal_type VARCHAR(20),
+    reviewer_principal_id VARCHAR(36),
+    from_status VARCHAR(50) NOT NULL,
+    to_status VARCHAR(50) NOT NULL,
+    state VARCHAR(20) NOT NULL,
+    comment TEXT,
+    decision_comment TEXT,
+    decided_at DATETIME,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (finding_id) REFERENCES raw_finding_instances(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 CREATE TABLE user_sessions (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,

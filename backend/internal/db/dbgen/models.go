@@ -51,6 +51,38 @@ type AuditLogEvent struct {
 	CreatedAt          time.Time
 }
 
+type FindingComment struct {
+	ID                  string
+	FindingID           string
+	ProjectID           string
+	AuthorPrincipalType string
+	AuthorPrincipalID   string
+	Body                string
+	IsSystem            bool
+	StatusFrom          sql.NullString
+	StatusTo            sql.NullString
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type FindingStatusChangeRequest struct {
+	ID                     string
+	FindingID              string
+	ProjectID              string
+	RequesterPrincipalType string
+	RequesterPrincipalID   string
+	ReviewerPrincipalType  sql.NullString
+	ReviewerPrincipalID    sql.NullString
+	FromStatus             string
+	ToStatus               string
+	State                  string
+	Comment                sql.NullString
+	DecisionComment        sql.NullString
+	DecidedAt              sql.NullTime
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type Group struct {
 	ID          string
 	Name        string

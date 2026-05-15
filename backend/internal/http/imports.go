@@ -394,16 +394,21 @@ func parseTrivyImageJSON(payload []byte) (parsedTrivyReport, error) {
 		}
 		target := stringPtrOrNil(stringValue(result["Target"]))
 		resultType := stringPtrOrNil(stringValue(result["Type"]))
+		resultClass := stringPtrOrNil(stringValue(result["Class"]))
 		vulns, _ := result["Vulnerabilities"].([]any)
 		for _, vulnRaw := range vulns {
 			vuln, ok := vulnRaw.(map[string]any)
 			if !ok {
 				continue
 			}
-			finding := parsedFindingFromVulnerability(vuln, artifactName, target, resultType)
+			finding := parsedFindingFromVulnerability(vuln, artifactName, target, resultType, resultClass)
 			existing, exists := byKey[finding.DedupeKey]
 			if exists && severityRank(existing.Severity) >= severityRank(finding.Severity) {
+				byKey[finding.DedupeKey] = mergeParsedFindings(existing, finding)
 				continue
+			}
+			if exists {
+				finding = mergeParsedFindings(finding, existing)
 			}
 			byKey[finding.DedupeKey] = finding
 		}
@@ -416,13 +421,14 @@ func parseTrivyImageJSON(payload []byte) (parsedTrivyReport, error) {
 	return parsedTrivyReport{Target: artifactName, ScanStartedAt: startedAt, Findings: findings}, nil
 }
 
-func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, artifactPath *string, artifactType *string) parsedFinding {
+func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, artifactPath *string, artifactType *string, resultClass *string) parsedFinding {
 	vulnID := stringValue(vuln["VulnerabilityID"])
 	if vulnID == "" {
 		vulnID = "UNKNOWN"
 	}
 	identifiers := uniqueStrings(append(stringSlice(vuln["CveIDs"]), vulnID))
 	identifiers = uniqueStrings(append(identifiers, stringSlice(vuln["CweIDs"])...))
+	identifiers = uniqueStrings(append(identifiers, stringSlice(vuln["VendorIDs"])...))
 	primary := vulnID
 	for _, identifier := range identifiers {
 		if strings.HasPrefix(strings.ToUpper(identifier), "CVE-") {
@@ -439,6 +445,16 @@ func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, ar
 	if packageName != nil && packageVersion != nil {
 		scannerFindingID = primary + ":" + *packageName + ":" + *packageVersion
 	}
+	source := map[string]any{"scanner": trivyScanner, "vulnerability_id": vulnID}
+	if title := stringValue(vuln["Title"]); title != "" {
+		source["title"] = title
+	}
+	if description := stringValue(vuln["Description"]); description != "" {
+		source["description"] = description
+	}
+	if resultClass != nil {
+		source["result_class"] = *resultClass
+	}
 	return parsedFinding{
 		ScannerFindingID:  scannerFindingID,
 		PrimaryIdentifier: primary,
@@ -454,8 +470,29 @@ func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, ar
 		DedupeKey:         dedupeKey,
 		References:        stringSlice(vuln["References"]),
 		CVSS:              mapValue(vuln["CVSS"]),
-		Source:            map[string]any{"scanner": trivyScanner, "vulnerability_id": vulnID},
+		Source:            source,
 	}
+}
+
+func mergeParsedFindings(preferred parsedFinding, secondary parsedFinding) parsedFinding {
+	preferred.Identifiers = uniqueStrings(append(preferred.Identifiers, secondary.Identifiers...))
+	preferred.References = uniqueStrings(append(secondary.References, preferred.References...))
+	if _, ok := preferred.Source["description"]; !ok {
+		if value, exists := secondary.Source["description"]; exists {
+			preferred.Source["description"] = value
+		}
+	}
+	if _, ok := preferred.Source["title"]; !ok {
+		if value, exists := secondary.Source["title"]; exists {
+			preferred.Source["title"] = value
+		}
+	}
+	if _, ok := preferred.Source["result_class"]; !ok {
+		if value, exists := secondary.Source["result_class"]; exists {
+			preferred.Source["result_class"] = value
+		}
+	}
+	return preferred
 }
 
 func previewResponseFromReport(report parsedTrivyReport) trivyPreviewResponse {

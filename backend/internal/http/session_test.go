@@ -486,6 +486,36 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 			updated_at DATETIME NOT NULL,
 			UNIQUE (scan_target_id, dedupe_key)
 		)`,
+		`CREATE TABLE finding_comments (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			finding_id VARCHAR NOT NULL,
+			project_id VARCHAR NOT NULL,
+			author_principal_type VARCHAR(20) NOT NULL,
+			author_principal_id VARCHAR(36) NOT NULL,
+			body TEXT NOT NULL,
+			is_system BOOLEAN NOT NULL,
+			status_from VARCHAR(50),
+			status_to VARCHAR(50),
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE finding_status_change_requests (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			finding_id VARCHAR NOT NULL,
+			project_id VARCHAR NOT NULL,
+			requester_principal_type VARCHAR(20) NOT NULL,
+			requester_principal_id VARCHAR(36) NOT NULL,
+			reviewer_principal_type VARCHAR(20),
+			reviewer_principal_id VARCHAR(36),
+			from_status VARCHAR(50) NOT NULL,
+			to_status VARCHAR(50) NOT NULL,
+			state VARCHAR(20) NOT NULL,
+			comment TEXT,
+			decision_comment TEXT,
+			decided_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 		`CREATE TABLE app_security_settings (
 			id VARCHAR(50) PRIMARY KEY NOT NULL,
 			force_peer_review_for_status_changes BOOLEAN NOT NULL DEFAULT false,
