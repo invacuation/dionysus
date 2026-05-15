@@ -8,6 +8,7 @@ SELECT
     asset_nodes.path AS scan_target_path,
     asset_nodes.target_ref AS scan_target_ref,
     raw_finding_instances.scanner_kind,
+    scans.report_kind,
     raw_finding_instances.scanner_finding_id,
     raw_finding_instances.dedupe_key,
     raw_finding_instances.identifiers_json,
@@ -45,6 +46,7 @@ SELECT
     project_vulnerability_groups.first_detected_at AS group_first_detected_at,
     project_vulnerability_groups.status AS group_status
 FROM raw_finding_instances
+JOIN scans ON scans.id = raw_finding_instances.scan_id
 JOIN projects ON projects.id = raw_finding_instances.project_id
 JOIN asset_nodes ON asset_nodes.id = raw_finding_instances.scan_target_id
 LEFT JOIN project_vulnerability_groups ON
@@ -62,6 +64,7 @@ SELECT
     asset_nodes.path AS scan_target_path,
     asset_nodes.target_ref AS scan_target_ref,
     raw_finding_instances.scanner_kind,
+    scans.report_kind,
     raw_finding_instances.scanner_finding_id,
     raw_finding_instances.dedupe_key,
     raw_finding_instances.identifiers_json,
@@ -99,12 +102,233 @@ SELECT
     project_vulnerability_groups.first_detected_at AS group_first_detected_at,
     project_vulnerability_groups.status AS group_status
 FROM raw_finding_instances
+JOIN scans ON scans.id = raw_finding_instances.scan_id
 JOIN projects ON projects.id = raw_finding_instances.project_id
 JOIN asset_nodes ON asset_nodes.id = raw_finding_instances.scan_target_id
 LEFT JOIN project_vulnerability_groups ON
     project_vulnerability_groups.project_id = raw_finding_instances.project_id
     AND project_vulnerability_groups.dedupe_key = raw_finding_instances.primary_identifier
 WHERE raw_finding_instances.id = ?;
+
+-- name: CreateFindingComment :one
+INSERT INTO finding_comments (
+    id,
+    finding_id,
+    project_id,
+    author_principal_type,
+    author_principal_id,
+    body,
+    is_system,
+    status_from,
+    status_to,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    author_principal_type,
+    author_principal_id,
+    body,
+    is_system,
+    status_from,
+    status_to,
+    created_at,
+    updated_at;
+
+-- name: CreateFindingStatusChangeRequest :one
+INSERT INTO finding_status_change_requests (
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at;
+
+-- name: GetFindingStatusChangeRequest :one
+SELECT
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+FROM finding_status_change_requests
+WHERE id = ? AND finding_id = ?;
+
+-- name: UpdateFindingStatusChangeRequestDecision :one
+UPDATE finding_status_change_requests
+SET
+    state = ?,
+    reviewer_principal_type = ?,
+    reviewer_principal_id = ?,
+    decision_comment = ?,
+    decided_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at;
+
+-- name: UpdateRawFindingStatus :one
+UPDATE raw_finding_instances
+SET status = ?, updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    project_id,
+    scan_id,
+    scan_target_id,
+    scanner_kind,
+    scanner_finding_id,
+    dedupe_key,
+    identifiers_json,
+    primary_identifier,
+    severity,
+    cvss_json,
+    package_name,
+    package_version,
+    fixed_version,
+    artifact_name,
+    artifact_type,
+    artifact_path,
+    first_seen_at,
+    last_seen_at,
+    present_in_latest_scan,
+    status,
+    references_json,
+    source_json,
+    created_at,
+    updated_at;
+
+-- name: UpdateProjectVulnerabilityGroupStatus :exec
+UPDATE project_vulnerability_groups
+SET status = ?, updated_at = ?
+WHERE project_id = ? AND dedupe_key = ?;
+
+-- name: UpsertFindingReleaseStatusDecision :one
+INSERT INTO finding_release_status_decisions (
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    scanner_kind,
+    report_kind,
+    finding_identity
+) DO UPDATE SET
+    release_version = excluded.release_version,
+    status = excluded.status,
+    source_finding_id = excluded.source_finding_id,
+    source_comment_id = excluded.source_comment_id,
+    source_request_id = excluded.source_request_id,
+    decided_at = excluded.decided_at,
+    updated_at = excluded.updated_at
+RETURNING
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at;
+
+-- name: ListReleaseStatusDecisions :many
+SELECT
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at
+FROM finding_release_status_decisions
+WHERE
+    project_id = ?
+    AND release_scope_asset_id = ?
+    AND scanner_kind = ?
+    AND report_kind = ?
+    AND finding_identity = ?;
 
 -- name: ListFindingComments :many
 SELECT

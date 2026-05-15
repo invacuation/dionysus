@@ -278,6 +278,7 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 				additional = append(additional, identifier)
 			}
 		}
+		groupStatus := "open"
 		if _, err := queries.CreateProjectVulnerabilityGroup(r.Context(), dbgen.CreateProjectVulnerabilityGroupParams{
 			ID:                        uuid.NewString(),
 			ProjectID:                 projectID,
@@ -285,14 +286,14 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 			AdditionalIdentifiersJson: mustJSON(additional),
 			FirstDetectedAt:           now,
 			Severity:                  finding.Severity,
-			Status:                    "open",
+			Status:                    groupStatus,
 			DedupeKey:                 finding.PrimaryIdentifier,
 			CreatedAt:                 now,
 			UpdatedAt:                 now,
 		}); err != nil {
 			return trivyPersistResult{}, err
 		}
-		if _, err := queries.CreateRawFindingInstance(r.Context(), dbgen.CreateRawFindingInstanceParams{
+		rawFinding, err := queries.CreateRawFindingInstance(r.Context(), dbgen.CreateRawFindingInstanceParams{
 			ID:                  uuid.NewString(),
 			ProjectID:           projectID,
 			ScanID:              scan.ID,
@@ -318,11 +319,64 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 			SourceJson:          mustJSON(finding.Source),
 			CreatedAt:           now,
 			UpdatedAt:           now,
-		}); err != nil {
+		})
+		if err != nil {
 			return trivyPersistResult{}, err
+		}
+		inheritedStatus, err := applyImportedReleaseInheritance(r, queries, projectID, scanTargetID, scan.ReportKind, rawFinding, now)
+		if err != nil {
+			return trivyPersistResult{}, err
+		}
+		if inheritedStatus != "" {
+			groupStatus = inheritedStatus
+			if err := queries.UpdateProjectVulnerabilityGroupStatus(r.Context(), dbgen.UpdateProjectVulnerabilityGroupStatusParams{
+				Status:    groupStatus,
+				UpdatedAt: now,
+				ProjectID: projectID,
+				DedupeKey: finding.PrimaryIdentifier,
+			}); err != nil {
+				return trivyPersistResult{}, err
+			}
 		}
 	}
 	return trivyPersistResult{attempt: attempt, scan: scan}, nil
+}
+
+func applyImportedReleaseInheritance(r *http.Request, queries *dbgen.Queries, projectID string, scanTargetID string, reportKind string, finding dbgen.RawFindingInstance, now time.Time) (string, error) {
+	if finding.Status != "open" {
+		return "", nil
+	}
+	decision, context, err := latestApplicableReleaseDecision(r, queries, projectID, scanTargetID, finding.ScannerKind, reportKind, finding.PrimaryIdentifier, optionalStringValue(finding.PackageName))
+	if err != nil || decision == nil {
+		return "", err
+	}
+	if decision.Status == "open" {
+		return "open", nil
+	}
+	if _, err := queries.UpdateRawFindingStatus(r.Context(), dbgen.UpdateRawFindingStatusParams{
+		Status:    decision.Status,
+		UpdatedAt: now,
+		ID:        finding.ID,
+	}); err != nil {
+		return "", err
+	}
+	body := "Inherited " + decision.Status + " from " + context.ScopePath + "/" + decision.ReleaseVersion + "."
+	if _, err := queries.CreateFindingComment(r.Context(), dbgen.CreateFindingCommentParams{
+		ID:                  uuid.NewString(),
+		FindingID:           finding.ID,
+		ProjectID:           projectID,
+		AuthorPrincipalType: "machine",
+		AuthorPrincipalID:   "system",
+		Body:                body,
+		IsSystem:            true,
+		StatusFrom:          sql.NullString{String: "open", Valid: true},
+		StatusTo:            sql.NullString{String: decision.Status, Valid: true},
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}); err != nil {
+		return "", err
+	}
+	return decision.Status, nil
 }
 
 func createFailedImportAttempt(w http.ResponseWriter, r *http.Request, deps Dependencies, projectID string, scanTargetID string, actor identity.AuthenticatedActor, message string) *dbgen.ImportAttempt {

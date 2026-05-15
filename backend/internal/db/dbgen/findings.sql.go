@@ -11,6 +11,172 @@ import (
 	"time"
 )
 
+const createFindingComment = `-- name: CreateFindingComment :one
+INSERT INTO finding_comments (
+    id,
+    finding_id,
+    project_id,
+    author_principal_type,
+    author_principal_id,
+    body,
+    is_system,
+    status_from,
+    status_to,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    author_principal_type,
+    author_principal_id,
+    body,
+    is_system,
+    status_from,
+    status_to,
+    created_at,
+    updated_at
+`
+
+type CreateFindingCommentParams struct {
+	ID                  string
+	FindingID           string
+	ProjectID           string
+	AuthorPrincipalType string
+	AuthorPrincipalID   string
+	Body                string
+	IsSystem            bool
+	StatusFrom          sql.NullString
+	StatusTo            sql.NullString
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func (q *Queries) CreateFindingComment(ctx context.Context, arg CreateFindingCommentParams) (FindingComment, error) {
+	row := q.db.QueryRowContext(ctx, createFindingComment,
+		arg.ID,
+		arg.FindingID,
+		arg.ProjectID,
+		arg.AuthorPrincipalType,
+		arg.AuthorPrincipalID,
+		arg.Body,
+		arg.IsSystem,
+		arg.StatusFrom,
+		arg.StatusTo,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i FindingComment
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.ProjectID,
+		&i.AuthorPrincipalType,
+		&i.AuthorPrincipalID,
+		&i.Body,
+		&i.IsSystem,
+		&i.StatusFrom,
+		&i.StatusTo,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createFindingStatusChangeRequest = `-- name: CreateFindingStatusChangeRequest :one
+INSERT INTO finding_status_change_requests (
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+`
+
+type CreateFindingStatusChangeRequestParams struct {
+	ID                     string
+	FindingID              string
+	ProjectID              string
+	RequesterPrincipalType string
+	RequesterPrincipalID   string
+	ReviewerPrincipalType  sql.NullString
+	ReviewerPrincipalID    sql.NullString
+	FromStatus             string
+	ToStatus               string
+	State                  string
+	Comment                sql.NullString
+	DecisionComment        sql.NullString
+	DecidedAt              sql.NullTime
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+func (q *Queries) CreateFindingStatusChangeRequest(ctx context.Context, arg CreateFindingStatusChangeRequestParams) (FindingStatusChangeRequest, error) {
+	row := q.db.QueryRowContext(ctx, createFindingStatusChangeRequest,
+		arg.ID,
+		arg.FindingID,
+		arg.ProjectID,
+		arg.RequesterPrincipalType,
+		arg.RequesterPrincipalID,
+		arg.ReviewerPrincipalType,
+		arg.ReviewerPrincipalID,
+		arg.FromStatus,
+		arg.ToStatus,
+		arg.State,
+		arg.Comment,
+		arg.DecisionComment,
+		arg.DecidedAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i FindingStatusChangeRequest
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.ProjectID,
+		&i.RequesterPrincipalType,
+		&i.RequesterPrincipalID,
+		&i.ReviewerPrincipalType,
+		&i.ReviewerPrincipalID,
+		&i.FromStatus,
+		&i.ToStatus,
+		&i.State,
+		&i.Comment,
+		&i.DecisionComment,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getFindingRow = `-- name: GetFindingRow :one
 SELECT
     raw_finding_instances.id AS finding_id,
@@ -21,6 +187,7 @@ SELECT
     asset_nodes.path AS scan_target_path,
     asset_nodes.target_ref AS scan_target_ref,
     raw_finding_instances.scanner_kind,
+    scans.report_kind,
     raw_finding_instances.scanner_finding_id,
     raw_finding_instances.dedupe_key,
     raw_finding_instances.identifiers_json,
@@ -58,6 +225,7 @@ SELECT
     project_vulnerability_groups.first_detected_at AS group_first_detected_at,
     project_vulnerability_groups.status AS group_status
 FROM raw_finding_instances
+JOIN scans ON scans.id = raw_finding_instances.scan_id
 JOIN projects ON projects.id = raw_finding_instances.project_id
 JOIN asset_nodes ON asset_nodes.id = raw_finding_instances.scan_target_id
 LEFT JOIN project_vulnerability_groups ON
@@ -75,6 +243,7 @@ type GetFindingRowRow struct {
 	ScanTargetPath                 string
 	ScanTargetRef                  sql.NullString
 	ScannerKind                    string
+	ReportKind                     string
 	ScannerFindingID               string
 	DedupeKey                      string
 	IdentifiersJson                string
@@ -125,6 +294,7 @@ func (q *Queries) GetFindingRow(ctx context.Context, id string) (GetFindingRowRo
 		&i.ScanTargetPath,
 		&i.ScanTargetRef,
 		&i.ScannerKind,
+		&i.ReportKind,
 		&i.ScannerFindingID,
 		&i.DedupeKey,
 		&i.IdentifiersJson,
@@ -161,6 +331,55 @@ func (q *Queries) GetFindingRow(ctx context.Context, id string) (GetFindingRowRo
 		&i.GroupAdditionalIdentifiersJson,
 		&i.GroupFirstDetectedAt,
 		&i.GroupStatus,
+	)
+	return i, err
+}
+
+const getFindingStatusChangeRequest = `-- name: GetFindingStatusChangeRequest :one
+SELECT
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+FROM finding_status_change_requests
+WHERE id = ? AND finding_id = ?
+`
+
+type GetFindingStatusChangeRequestParams struct {
+	ID        string
+	FindingID string
+}
+
+func (q *Queries) GetFindingStatusChangeRequest(ctx context.Context, arg GetFindingStatusChangeRequestParams) (FindingStatusChangeRequest, error) {
+	row := q.db.QueryRowContext(ctx, getFindingStatusChangeRequest, arg.ID, arg.FindingID)
+	var i FindingStatusChangeRequest
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.ProjectID,
+		&i.RequesterPrincipalType,
+		&i.RequesterPrincipalID,
+		&i.ReviewerPrincipalType,
+		&i.ReviewerPrincipalID,
+		&i.FromStatus,
+		&i.ToStatus,
+		&i.State,
+		&i.Comment,
+		&i.DecisionComment,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -252,6 +471,7 @@ SELECT
     asset_nodes.path AS scan_target_path,
     asset_nodes.target_ref AS scan_target_ref,
     raw_finding_instances.scanner_kind,
+    scans.report_kind,
     raw_finding_instances.scanner_finding_id,
     raw_finding_instances.dedupe_key,
     raw_finding_instances.identifiers_json,
@@ -289,6 +509,7 @@ SELECT
     project_vulnerability_groups.first_detected_at AS group_first_detected_at,
     project_vulnerability_groups.status AS group_status
 FROM raw_finding_instances
+JOIN scans ON scans.id = raw_finding_instances.scan_id
 JOIN projects ON projects.id = raw_finding_instances.project_id
 JOIN asset_nodes ON asset_nodes.id = raw_finding_instances.scan_target_id
 LEFT JOIN project_vulnerability_groups ON
@@ -306,6 +527,7 @@ type ListFindingRowsRow struct {
 	ScanTargetPath                 string
 	ScanTargetRef                  sql.NullString
 	ScannerKind                    string
+	ReportKind                     string
 	ScannerFindingID               string
 	DedupeKey                      string
 	IdentifiersJson                string
@@ -362,6 +584,7 @@ func (q *Queries) ListFindingRows(ctx context.Context) ([]ListFindingRowsRow, er
 			&i.ScanTargetPath,
 			&i.ScanTargetRef,
 			&i.ScannerKind,
+			&i.ReportKind,
 			&i.ScannerFindingID,
 			&i.DedupeKey,
 			&i.IdentifiersJson,
@@ -509,4 +732,354 @@ func (q *Queries) ListFindingStatusChangeRequests(ctx context.Context, findingID
 		return nil, err
 	}
 	return items, nil
+}
+
+const listReleaseStatusDecisions = `-- name: ListReleaseStatusDecisions :many
+SELECT
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at
+FROM finding_release_status_decisions
+WHERE
+    project_id = ?
+    AND release_scope_asset_id = ?
+    AND scanner_kind = ?
+    AND report_kind = ?
+    AND finding_identity = ?
+`
+
+type ListReleaseStatusDecisionsParams struct {
+	ProjectID           string
+	ReleaseScopeAssetID string
+	ScannerKind         string
+	ReportKind          string
+	FindingIdentity     string
+}
+
+func (q *Queries) ListReleaseStatusDecisions(ctx context.Context, arg ListReleaseStatusDecisionsParams) ([]FindingReleaseStatusDecision, error) {
+	rows, err := q.db.QueryContext(ctx, listReleaseStatusDecisions,
+		arg.ProjectID,
+		arg.ReleaseScopeAssetID,
+		arg.ScannerKind,
+		arg.ReportKind,
+		arg.FindingIdentity,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindingReleaseStatusDecision
+	for rows.Next() {
+		var i FindingReleaseStatusDecision
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.ReleaseScopeAssetID,
+			&i.ReleaseVersionAssetID,
+			&i.ReleaseVersion,
+			&i.ScannerKind,
+			&i.ReportKind,
+			&i.FindingIdentity,
+			&i.Status,
+			&i.SourceFindingID,
+			&i.SourceCommentID,
+			&i.SourceRequestID,
+			&i.DecidedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateFindingStatusChangeRequestDecision = `-- name: UpdateFindingStatusChangeRequestDecision :one
+UPDATE finding_status_change_requests
+SET
+    state = ?,
+    reviewer_principal_type = ?,
+    reviewer_principal_id = ?,
+    decision_comment = ?,
+    decided_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    finding_id,
+    project_id,
+    requester_principal_type,
+    requester_principal_id,
+    reviewer_principal_type,
+    reviewer_principal_id,
+    from_status,
+    to_status,
+    state,
+    comment,
+    decision_comment,
+    decided_at,
+    created_at,
+    updated_at
+`
+
+type UpdateFindingStatusChangeRequestDecisionParams struct {
+	State                 string
+	ReviewerPrincipalType sql.NullString
+	ReviewerPrincipalID   sql.NullString
+	DecisionComment       sql.NullString
+	DecidedAt             sql.NullTime
+	UpdatedAt             time.Time
+	ID                    string
+}
+
+func (q *Queries) UpdateFindingStatusChangeRequestDecision(ctx context.Context, arg UpdateFindingStatusChangeRequestDecisionParams) (FindingStatusChangeRequest, error) {
+	row := q.db.QueryRowContext(ctx, updateFindingStatusChangeRequestDecision,
+		arg.State,
+		arg.ReviewerPrincipalType,
+		arg.ReviewerPrincipalID,
+		arg.DecisionComment,
+		arg.DecidedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i FindingStatusChangeRequest
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.ProjectID,
+		&i.RequesterPrincipalType,
+		&i.RequesterPrincipalID,
+		&i.ReviewerPrincipalType,
+		&i.ReviewerPrincipalID,
+		&i.FromStatus,
+		&i.ToStatus,
+		&i.State,
+		&i.Comment,
+		&i.DecisionComment,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateProjectVulnerabilityGroupStatus = `-- name: UpdateProjectVulnerabilityGroupStatus :exec
+UPDATE project_vulnerability_groups
+SET status = ?, updated_at = ?
+WHERE project_id = ? AND dedupe_key = ?
+`
+
+type UpdateProjectVulnerabilityGroupStatusParams struct {
+	Status    string
+	UpdatedAt time.Time
+	ProjectID string
+	DedupeKey string
+}
+
+func (q *Queries) UpdateProjectVulnerabilityGroupStatus(ctx context.Context, arg UpdateProjectVulnerabilityGroupStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateProjectVulnerabilityGroupStatus,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.ProjectID,
+		arg.DedupeKey,
+	)
+	return err
+}
+
+const updateRawFindingStatus = `-- name: UpdateRawFindingStatus :one
+UPDATE raw_finding_instances
+SET status = ?, updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    project_id,
+    scan_id,
+    scan_target_id,
+    scanner_kind,
+    scanner_finding_id,
+    dedupe_key,
+    identifiers_json,
+    primary_identifier,
+    severity,
+    cvss_json,
+    package_name,
+    package_version,
+    fixed_version,
+    artifact_name,
+    artifact_type,
+    artifact_path,
+    first_seen_at,
+    last_seen_at,
+    present_in_latest_scan,
+    status,
+    references_json,
+    source_json,
+    created_at,
+    updated_at
+`
+
+type UpdateRawFindingStatusParams struct {
+	Status    string
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) UpdateRawFindingStatus(ctx context.Context, arg UpdateRawFindingStatusParams) (RawFindingInstance, error) {
+	row := q.db.QueryRowContext(ctx, updateRawFindingStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	var i RawFindingInstance
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ScanID,
+		&i.ScanTargetID,
+		&i.ScannerKind,
+		&i.ScannerFindingID,
+		&i.DedupeKey,
+		&i.IdentifiersJson,
+		&i.PrimaryIdentifier,
+		&i.Severity,
+		&i.CvssJson,
+		&i.PackageName,
+		&i.PackageVersion,
+		&i.FixedVersion,
+		&i.ArtifactName,
+		&i.ArtifactType,
+		&i.ArtifactPath,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.PresentInLatestScan,
+		&i.Status,
+		&i.ReferencesJson,
+		&i.SourceJson,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertFindingReleaseStatusDecision = `-- name: UpsertFindingReleaseStatusDecision :one
+INSERT INTO finding_release_status_decisions (
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    scanner_kind,
+    report_kind,
+    finding_identity
+) DO UPDATE SET
+    release_version = excluded.release_version,
+    status = excluded.status,
+    source_finding_id = excluded.source_finding_id,
+    source_comment_id = excluded.source_comment_id,
+    source_request_id = excluded.source_request_id,
+    decided_at = excluded.decided_at,
+    updated_at = excluded.updated_at
+RETURNING
+    id,
+    project_id,
+    release_scope_asset_id,
+    release_version_asset_id,
+    release_version,
+    scanner_kind,
+    report_kind,
+    finding_identity,
+    status,
+    source_finding_id,
+    source_comment_id,
+    source_request_id,
+    decided_at,
+    created_at,
+    updated_at
+`
+
+type UpsertFindingReleaseStatusDecisionParams struct {
+	ID                    string
+	ProjectID             string
+	ReleaseScopeAssetID   string
+	ReleaseVersionAssetID string
+	ReleaseVersion        string
+	ScannerKind           string
+	ReportKind            string
+	FindingIdentity       string
+	Status                string
+	SourceFindingID       string
+	SourceCommentID       sql.NullString
+	SourceRequestID       sql.NullString
+	DecidedAt             time.Time
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
+func (q *Queries) UpsertFindingReleaseStatusDecision(ctx context.Context, arg UpsertFindingReleaseStatusDecisionParams) (FindingReleaseStatusDecision, error) {
+	row := q.db.QueryRowContext(ctx, upsertFindingReleaseStatusDecision,
+		arg.ID,
+		arg.ProjectID,
+		arg.ReleaseScopeAssetID,
+		arg.ReleaseVersionAssetID,
+		arg.ReleaseVersion,
+		arg.ScannerKind,
+		arg.ReportKind,
+		arg.FindingIdentity,
+		arg.Status,
+		arg.SourceFindingID,
+		arg.SourceCommentID,
+		arg.SourceRequestID,
+		arg.DecidedAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i FindingReleaseStatusDecision
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ReleaseScopeAssetID,
+		&i.ReleaseVersionAssetID,
+		&i.ReleaseVersion,
+		&i.ScannerKind,
+		&i.ReportKind,
+		&i.FindingIdentity,
+		&i.Status,
+		&i.SourceFindingID,
+		&i.SourceCommentID,
+		&i.SourceRequestID,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

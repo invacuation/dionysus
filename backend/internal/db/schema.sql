@@ -242,6 +242,38 @@ CREATE TABLE finding_status_change_requests (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+CREATE TABLE finding_release_status_decisions (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    release_scope_asset_id VARCHAR NOT NULL,
+    release_version_asset_id VARCHAR NOT NULL,
+    release_version VARCHAR(120) NOT NULL,
+    scanner_kind VARCHAR(50) NOT NULL,
+    report_kind VARCHAR(120) NOT NULL,
+    finding_identity VARCHAR(512) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    source_finding_id VARCHAR NOT NULL,
+    source_comment_id VARCHAR,
+    source_request_id VARCHAR,
+    decided_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (release_scope_asset_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (release_version_asset_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_finding_id) REFERENCES raw_finding_instances(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_comment_id) REFERENCES finding_comments(id) ON DELETE SET NULL,
+    FOREIGN KEY (source_request_id) REFERENCES finding_status_change_requests(id) ON DELETE SET NULL,
+    UNIQUE (
+        project_id,
+        release_scope_asset_id,
+        release_version_asset_id,
+        scanner_kind,
+        report_kind,
+        finding_identity
+    )
+);
+
 CREATE TABLE user_sessions (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,

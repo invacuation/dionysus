@@ -65,6 +65,24 @@ type FindingComment struct {
 	UpdatedAt           time.Time
 }
 
+type FindingReleaseStatusDecision struct {
+	ID                    string
+	ProjectID             string
+	ReleaseScopeAssetID   string
+	ReleaseVersionAssetID string
+	ReleaseVersion        string
+	ScannerKind           string
+	ReportKind            string
+	FindingIdentity       string
+	Status                string
+	SourceFindingID       string
+	SourceCommentID       sql.NullString
+	SourceRequestID       sql.NullString
+	DecidedAt             time.Time
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
 type FindingStatusChangeRequest struct {
 	ID                     string
 	FindingID              string

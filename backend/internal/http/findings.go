@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
@@ -125,6 +127,24 @@ type findingStatusChangeRequestResponse struct {
 	DecidedAt              *time.Time `json:"decided_at"`
 }
 
+type findingCommentCreateRequest struct {
+	Body string `json:"body"`
+}
+
+type findingStatusUpdateRequest struct {
+	Status            string `json:"status"`
+	Comment           string `json:"comment"`
+	RequirePeerReview bool   `json:"require_peer_review"`
+}
+
+type findingStatusApprovalRequest struct {
+	Comment *string `json:"comment"`
+}
+
+type findingStatusRejectionRequest struct {
+	Comment string `json:"comment"`
+}
+
 type findingRowData struct {
 	dbgen.ListFindingRowsRow
 }
@@ -150,6 +170,18 @@ func mountFindingRoutes(router chi.Router, settings config.Settings, deps Depend
 	})
 	router.Get("/api/findings/{findingID}", func(w http.ResponseWriter, r *http.Request) {
 		getFindingDetail(w, r, settings, deps)
+	})
+	router.Post("/api/findings/{findingID}/comments", func(w http.ResponseWriter, r *http.Request) {
+		createFindingComment(w, r, settings, deps)
+	})
+	router.Post("/api/findings/{findingID}/status", func(w http.ResponseWriter, r *http.Request) {
+		updateFindingStatus(w, r, settings, deps)
+	})
+	router.Post("/api/findings/{findingID}/status-requests/{requestID}/approve", func(w http.ResponseWriter, r *http.Request) {
+		reviewFindingStatusRequest(w, r, settings, deps, true)
+	})
+	router.Post("/api/findings/{findingID}/status-requests/{requestID}/reject", func(w http.ResponseWriter, r *http.Request) {
+		reviewFindingStatusRequest(w, r, settings, deps, false)
 	})
 }
 
@@ -221,6 +253,611 @@ func getFindingDetail(w http.ResponseWriter, r *http.Request, settings config.Se
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func createFindingComment(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	findingID := chi.URLParam(r, "findingID")
+	queries := dbgen.New(deps.DB)
+	row, ok := requireFindingRow(w, r, queries, findingID)
+	if !ok {
+		return
+	}
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "finding:comment", ScopeType: stringPtr("project"), ScopeID: stringPtr(row.ProjectID)})
+	if !ok {
+		return
+	}
+	var payload findingCommentCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid comment request")
+		return
+	}
+	body := strings.TrimSpace(payload.Body)
+	if body == "" {
+		writeError(w, http.StatusBadRequest, "Comment body is required")
+		return
+	}
+	now := time.Now().UTC()
+	comment, err := queries.CreateFindingComment(r.Context(), dbgen.CreateFindingCommentParams{
+		ID:                  uuid.NewString(),
+		FindingID:           row.FindingID,
+		ProjectID:           row.ProjectID,
+		AuthorPrincipalType: actor.PrincipalType,
+		AuthorPrincipalID:   actor.PrincipalID,
+		Body:                body,
+		IsSystem:            false,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "finding.comment.created",
+		TargetType: stringPtr("finding"),
+		TargetID:   stringPtr(row.FindingID),
+		ProjectID:  stringPtr(row.ProjectID),
+		Metadata:   map[string]any{"comment_id": comment.ID},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, findingCommentResponseFromDB(comment, actor.DisplayName))
+}
+
+func updateFindingStatus(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	findingID := chi.URLParam(r, "findingID")
+	queries := dbgen.New(deps.DB)
+	row, ok := requireFindingRow(w, r, queries, findingID)
+	if !ok {
+		return
+	}
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "finding:status_change:request", ScopeType: stringPtr("project"), ScopeID: stringPtr(row.ProjectID)})
+	if !ok {
+		return
+	}
+	var payload findingStatusUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid status request")
+		return
+	}
+	targetStatus := strings.TrimSpace(payload.Status)
+	if !findingStatuses[targetStatus] {
+		writeError(w, http.StatusBadRequest, "Unsupported finding status")
+		return
+	}
+	commentBody := strings.TrimSpace(payload.Comment)
+	if targetStatus != row.Status && targetStatus != "open" && commentBody == "" {
+		writeError(w, http.StatusBadRequest, "Status change comment is required")
+		return
+	}
+	requireReview, err := effectivePeerReviewRequired(r, queries, row.ProjectID, payload.RequirePeerReview)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	now := time.Now().UTC()
+	state := "approved"
+	decidedAt := sql.NullTime{Time: now, Valid: true}
+	if requireReview {
+		state = "pending"
+		decidedAt = sql.NullTime{}
+	}
+	request, comment, err := createFindingStatusActivity(r, queries, row, *actor, targetStatus, commentBody, state, decidedAt, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if !requireReview {
+		if err := applyFindingStatus(r, queries, row, targetStatus, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+		if _, err := recordReleaseStatusDecision(r, queries, row, targetStatus, &comment.ID, &request.ID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+	}
+	eventType := "finding.status.changed"
+	if requireReview {
+		eventType = "finding.status.requested"
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       eventType,
+		TargetType: stringPtr("finding"),
+		TargetID:   stringPtr(row.FindingID),
+		ProjectID:  stringPtr(row.ProjectID),
+		Metadata: map[string]any{
+			"request_id":  request.ID,
+			"comment_id":  comment.ID,
+			"from_status": row.Status,
+			"to_status":   targetStatus,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeUpdatedFindingDetail(w, r, queries, row.FindingID)
+}
+
+func reviewFindingStatusRequest(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies, approve bool) {
+	findingID := chi.URLParam(r, "findingID")
+	requestID := chi.URLParam(r, "requestID")
+	queries := dbgen.New(deps.DB)
+	row, ok := requireFindingRow(w, r, queries, findingID)
+	if !ok {
+		return
+	}
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "finding:status_change:approve", ScopeType: stringPtr("project"), ScopeID: stringPtr(row.ProjectID)})
+	if !ok {
+		return
+	}
+	statusRequest, err := queries.GetFindingStatusChangeRequest(r.Context(), dbgen.GetFindingStatusChangeRequestParams{ID: requestID, FindingID: findingID})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Status change request not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if statusRequest.State != "pending" {
+		writeError(w, http.StatusBadRequest, "Status change request is not pending")
+		return
+	}
+	if statusRequest.RequesterPrincipalType == actor.PrincipalType && statusRequest.RequesterPrincipalID == actor.PrincipalID {
+		writeError(w, http.StatusBadRequest, "Requester cannot review their own status change")
+		return
+	}
+	decisionComment, ok := decodeFindingReviewComment(w, r, approve)
+	if !ok {
+		return
+	}
+	now := time.Now().UTC()
+	state := "approved"
+	eventType := "finding.status.approved"
+	if !approve {
+		state = "rejected"
+		eventType = "finding.status.rejected"
+	}
+	updatedRequest, err := queries.UpdateFindingStatusChangeRequestDecision(r.Context(), dbgen.UpdateFindingStatusChangeRequestDecisionParams{
+		State:                 state,
+		ReviewerPrincipalType: sql.NullString{String: actor.PrincipalType, Valid: true},
+		ReviewerPrincipalID:   sql.NullString{String: actor.PrincipalID, Valid: true},
+		DecisionComment:       nullStringFromPtr(decisionComment),
+		DecidedAt:             sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:             now,
+		ID:                    requestID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if approve {
+		if err := applyFindingStatus(r, queries, row, statusRequest.ToStatus, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+		if _, err := recordReleaseStatusDecision(r, queries, row, statusRequest.ToStatus, nil, &updatedRequest.ID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       eventType,
+		TargetType: stringPtr("finding"),
+		TargetID:   stringPtr(row.FindingID),
+		ProjectID:  stringPtr(row.ProjectID),
+		Metadata: map[string]any{
+			"request_id":  requestID,
+			"from_status": statusRequest.FromStatus,
+			"to_status":   statusRequest.ToStatus,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeUpdatedFindingDetail(w, r, queries, row.FindingID)
+}
+
+func requireFindingRow(w http.ResponseWriter, r *http.Request, queries *dbgen.Queries, findingID string) (dbgen.GetFindingRowRow, bool) {
+	row, err := queries.GetFindingRow(r.Context(), findingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Finding not found")
+			return dbgen.GetFindingRowRow{}, false
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return dbgen.GetFindingRowRow{}, false
+	}
+	return row, true
+}
+
+func writeUpdatedFindingDetail(w http.ResponseWriter, r *http.Request, queries *dbgen.Queries, findingID string) {
+	updatedRow, err := queries.GetFindingRow(r.Context(), findingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Finding not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	response, err := findingDetailResponseFromDB(r, queries, updatedRow)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func findingCommentResponseFromDB(comment dbgen.FindingComment, authorDisplay string) findingCommentResponse {
+	display := stringPtr(authorDisplay)
+	if strings.TrimSpace(authorDisplay) == "" {
+		display = nil
+	}
+	return findingCommentResponse{
+		ID:                  comment.ID,
+		Body:                comment.Body,
+		AuthorPrincipalType: comment.AuthorPrincipalType,
+		AuthorPrincipalID:   comment.AuthorPrincipalID,
+		AuthorDisplay:       display,
+		CreatedAt:           comment.CreatedAt.UTC(),
+		IsSystem:            comment.IsSystem,
+		StatusFrom:          optionalStringFromNull(comment.StatusFrom),
+		StatusTo:            optionalStringFromNull(comment.StatusTo),
+	}
+}
+
+func createFindingStatusActivity(
+	r *http.Request,
+	queries *dbgen.Queries,
+	row dbgen.GetFindingRowRow,
+	actor identity.AuthenticatedActor,
+	targetStatus string,
+	commentBody string,
+	state string,
+	decidedAt sql.NullTime,
+	now time.Time,
+) (dbgen.FindingStatusChangeRequest, dbgen.FindingComment, error) {
+	request, err := queries.CreateFindingStatusChangeRequest(r.Context(), dbgen.CreateFindingStatusChangeRequestParams{
+		ID:                     uuid.NewString(),
+		FindingID:              row.FindingID,
+		ProjectID:              row.ProjectID,
+		RequesterPrincipalType: actor.PrincipalType,
+		RequesterPrincipalID:   actor.PrincipalID,
+		FromStatus:             row.Status,
+		ToStatus:               targetStatus,
+		State:                  state,
+		Comment:                nullStringFromPtr(stringPtrOrNil(commentBody)),
+		DecidedAt:              decidedAt,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	})
+	if err != nil {
+		return dbgen.FindingStatusChangeRequest{}, dbgen.FindingComment{}, err
+	}
+	comment, err := queries.CreateFindingComment(r.Context(), dbgen.CreateFindingCommentParams{
+		ID:                  uuid.NewString(),
+		FindingID:           row.FindingID,
+		ProjectID:           row.ProjectID,
+		AuthorPrincipalType: actor.PrincipalType,
+		AuthorPrincipalID:   actor.PrincipalID,
+		Body:                commentBody,
+		IsSystem:            false,
+		StatusFrom:          sql.NullString{String: row.Status, Valid: true},
+		StatusTo:            sql.NullString{String: targetStatus, Valid: true},
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	})
+	return request, comment, err
+}
+
+func applyFindingStatus(r *http.Request, queries *dbgen.Queries, row dbgen.GetFindingRowRow, status string, now time.Time) error {
+	if _, err := queries.UpdateRawFindingStatus(r.Context(), dbgen.UpdateRawFindingStatusParams{Status: status, UpdatedAt: now, ID: row.FindingID}); err != nil {
+		return err
+	}
+	return queries.UpdateProjectVulnerabilityGroupStatus(r.Context(), dbgen.UpdateProjectVulnerabilityGroupStatusParams{
+		Status:    status,
+		UpdatedAt: now,
+		ProjectID: row.ProjectID,
+		DedupeKey: row.PrimaryIdentifier,
+	})
+}
+
+func effectivePeerReviewRequired(r *http.Request, queries *dbgen.Queries, projectID string, requested bool) (bool, error) {
+	if requested {
+		return true, nil
+	}
+	appSettings, err := queries.GetAppSecuritySettings(r.Context(), identity.AppSecuritySettingsID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if err == nil && appSettings.ForcePeerReviewForStatusChanges {
+		return true, nil
+	}
+	project, err := queries.GetProject(r.Context(), projectID)
+	if err != nil {
+		return false, err
+	}
+	return project.RequirePeerReviewForStatusChanges, nil
+}
+
+func decodeFindingReviewComment(w http.ResponseWriter, r *http.Request, approve bool) (*string, bool) {
+	if approve {
+		var payload findingStatusApprovalRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "Invalid review request")
+			return nil, false
+		}
+		if payload.Comment == nil {
+			return nil, true
+		}
+		trimmed := strings.TrimSpace(*payload.Comment)
+		if trimmed == "" {
+			return nil, true
+		}
+		return &trimmed, true
+	}
+	var payload findingStatusRejectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid review request")
+		return nil, false
+	}
+	trimmed := strings.TrimSpace(payload.Comment)
+	if trimmed == "" {
+		writeError(w, http.StatusBadRequest, "Decision comment is required")
+		return nil, false
+	}
+	return &trimmed, true
+}
+
+type releaseContext struct {
+	ScopeAssetID   string
+	ScopePath      string
+	VersionAssetID string
+	VersionPath    string
+	Version        string
+}
+
+func releaseContextForScanTarget(r *http.Request, queries *dbgen.Queries, scanTargetID string) (*releaseContext, error) {
+	target, err := queries.GetAssetNode(r.Context(), scanTargetID)
+	if err != nil {
+		return nil, err
+	}
+	assets, err := queries.ListProjectAssets(r.Context(), target.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]dbgen.AssetNode{}
+	for _, asset := range assets {
+		byID[asset.ID] = asset
+	}
+	pathFromTarget := []dbgen.AssetNode{}
+	current := target
+	for {
+		if current.ProjectID != target.ProjectID {
+			return nil, nil
+		}
+		if _, ok := metadataObject(current.MetadataJson); !ok {
+			return nil, nil
+		}
+		pathFromTarget = append(pathFromTarget, current)
+		if !current.ParentID.Valid {
+			break
+		}
+		parent, ok := byID[current.ParentID.String]
+		if !ok {
+			return nil, nil
+		}
+		current = parent
+	}
+	path := make([]dbgen.AssetNode, 0, len(pathFromTarget))
+	for index := len(pathFromTarget) - 1; index >= 0; index-- {
+		path = append(path, pathFromTarget[index])
+	}
+	for index := len(path) - 2; index >= 0; index-- {
+		ancestor := path[index]
+		if ancestor.NodeType != "folder" {
+			continue
+		}
+		metadata, ok := metadataObject(ancestor.MetadataJson)
+		if !ok {
+			return nil, nil
+		}
+		if metadata["release_inheritance_scope"] != true {
+			continue
+		}
+		versionAsset := path[index+1]
+		if versionAsset.NodeType != "folder" {
+			return nil, nil
+		}
+		versionMetadata, ok := metadataObject(versionAsset.MetadataJson)
+		if !ok {
+			return nil, nil
+		}
+		version := ""
+		if raw, exists := versionMetadata["release_version"]; exists {
+			version = strings.TrimSpace(stringFromAny(raw))
+		}
+		if version == "" {
+			version = strings.TrimSpace(versionAsset.Name)
+		}
+		if version == "" {
+			return nil, nil
+		}
+		return &releaseContext{
+			ScopeAssetID:   ancestor.ID,
+			ScopePath:      ancestor.Path,
+			VersionAssetID: versionAsset.ID,
+			VersionPath:    versionAsset.Path,
+			Version:        version,
+		}, nil
+	}
+	return nil, nil
+}
+
+func recordReleaseStatusDecision(r *http.Request, queries *dbgen.Queries, row dbgen.GetFindingRowRow, status string, commentID *string, requestID *string, decidedAt time.Time) (*dbgen.FindingReleaseStatusDecision, error) {
+	context, err := releaseContextForScanTarget(r, queries, row.ScanTargetID)
+	if err != nil || context == nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	decision, err := queries.UpsertFindingReleaseStatusDecision(r.Context(), dbgen.UpsertFindingReleaseStatusDecisionParams{
+		ID:                    uuid.NewString(),
+		ProjectID:             row.ProjectID,
+		ReleaseScopeAssetID:   context.ScopeAssetID,
+		ReleaseVersionAssetID: context.VersionAssetID,
+		ReleaseVersion:        context.Version,
+		ScannerKind:           row.ScannerKind,
+		ReportKind:            row.ReportKind,
+		FindingIdentity:       findingInheritanceIdentity(row.PrimaryIdentifier, optionalStringValue(row.PackageName)),
+		Status:                status,
+		SourceFindingID:       row.FindingID,
+		SourceCommentID:       nullStringFromPtr(commentID),
+		SourceRequestID:       nullStringFromPtr(requestID),
+		DecidedAt:             decidedAt,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &decision, nil
+}
+
+func latestApplicableReleaseDecision(r *http.Request, queries *dbgen.Queries, projectID string, scanTargetID string, scannerKind string, reportKind string, primaryIdentifier string, packageName string) (*dbgen.FindingReleaseStatusDecision, *releaseContext, error) {
+	context, err := releaseContextForScanTarget(r, queries, scanTargetID)
+	if err != nil || context == nil {
+		return nil, context, err
+	}
+	decisions, err := queries.ListReleaseStatusDecisions(r.Context(), dbgen.ListReleaseStatusDecisionsParams{
+		ProjectID:           projectID,
+		ReleaseScopeAssetID: context.ScopeAssetID,
+		ScannerKind:         scannerKind,
+		ReportKind:          reportKind,
+		FindingIdentity:     findingInheritanceIdentity(primaryIdentifier, packageName),
+	})
+	if err != nil {
+		return nil, context, err
+	}
+	return chooseLatestReleaseDecision(decisions, context.Version), context, nil
+}
+
+func chooseLatestReleaseDecision(decisions []dbgen.FindingReleaseStatusDecision, targetVersion string) *dbgen.FindingReleaseStatusDecision {
+	targetNumeric, targetOK := parseNumericVersion(targetVersion)
+	maxLen := len(targetNumeric)
+	decisionVersions := make([][]int, len(decisions))
+	for index, decision := range decisions {
+		parsed, ok := parseNumericVersion(decision.ReleaseVersion)
+		if ok {
+			decisionVersions[index] = parsed
+			if len(parsed) > maxLen {
+				maxLen = len(parsed)
+			}
+		}
+	}
+	var best *dbgen.FindingReleaseStatusDecision
+	var bestVersion []int
+	for index := range decisions {
+		decision := decisions[index]
+		parsed := decisionVersions[index]
+		if targetOK && parsed != nil {
+			paddedDecision := padVersion(parsed, maxLen)
+			if compareVersion(paddedDecision, padVersion(targetNumeric, maxLen)) > 0 {
+				continue
+			}
+			if best == nil || compareVersion(paddedDecision, bestVersion) > 0 || (compareVersion(paddedDecision, bestVersion) == 0 && releaseDecisionTieBreak(decision, *best) > 0) {
+				copyDecision := decision
+				best = &copyDecision
+				bestVersion = paddedDecision
+			}
+			continue
+		}
+		if !targetOK && decision.ReleaseVersion == targetVersion {
+			if best == nil || releaseDecisionTieBreak(decision, *best) > 0 {
+				copyDecision := decision
+				best = &copyDecision
+				bestVersion = []int{}
+			}
+		}
+	}
+	return best
+}
+
+func releaseDecisionTieBreak(left dbgen.FindingReleaseStatusDecision, right dbgen.FindingReleaseStatusDecision) int {
+	if cmp := compareTimes(left.DecidedAt, right.DecidedAt); cmp != 0 {
+		return cmp
+	}
+	if cmp := compareTimes(left.CreatedAt, right.CreatedAt); cmp != 0 {
+		return cmp
+	}
+	return strings.Compare(left.ID, right.ID)
+}
+
+func metadataObject(raw string) (map[string]any, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}, true
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+		return nil, false
+	}
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	return metadata, true
+}
+
+func findingInheritanceIdentity(primaryIdentifier string, packageName string) string {
+	return strings.TrimSpace(primaryIdentifier) + "|" + strings.TrimSpace(packageName)
+}
+
+func parseNumericVersion(version string) ([]int, bool) {
+	parts := strings.Split(strings.TrimSpace(version), ".")
+	if len(parts) == 0 {
+		return nil, false
+	}
+	values := make([]int, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			return nil, false
+		}
+		value := 0
+		for _, char := range part {
+			if char < '0' || char > '9' {
+				return nil, false
+			}
+			value = value*10 + int(char-'0')
+		}
+		values = append(values, value)
+	}
+	return values, true
+}
+
+func padVersion(version []int, length int) []int {
+	padded := make([]int, length)
+	copy(padded, version)
+	return padded
+}
+
+func compareVersion(left []int, right []int) int {
+	for index := 0; index < len(left) && index < len(right); index++ {
+		if left[index] < right[index] {
+			return -1
+		}
+		if left[index] > right[index] {
+			return 1
+		}
+	}
+	return compareInts(len(left), len(right))
+}
+
+func stringFromAny(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
 }
 
 func parseFindingFilters(w http.ResponseWriter, r *http.Request) (findingFilters, bool) {
@@ -559,6 +1196,7 @@ func listRowFromGetRow(row dbgen.GetFindingRowRow) dbgen.ListFindingRowsRow {
 		ScanTargetPath:                 row.ScanTargetPath,
 		ScanTargetRef:                  row.ScanTargetRef,
 		ScannerKind:                    row.ScannerKind,
+		ReportKind:                     row.ReportKind,
 		ScannerFindingID:               row.ScannerFindingID,
 		DedupeKey:                      row.DedupeKey,
 		IdentifiersJson:                row.IdentifiersJson,
