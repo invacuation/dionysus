@@ -6,9 +6,44 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/security"
 )
+
+func CreateSession(
+	ctx context.Context,
+	conn *sql.DB,
+	user dbgen.User,
+	now time.Time,
+	idleTimeoutMinutes int,
+	absoluteTimeoutMinutes int,
+	userAgent *string,
+	ipAddress *string,
+) (string, dbgen.UserSession, error) {
+	rawToken, err := security.GenerateToken()
+	if err != nil {
+		return "", dbgen.UserSession{}, err
+	}
+	now = now.UTC()
+	queries := dbgen.New(conn)
+	session, err := queries.CreateUserSession(ctx, dbgen.CreateUserSessionParams{
+		ID:            uuid.NewString(),
+		UserID:        user.ID,
+		TokenDigest:   security.TokenDigest(rawToken),
+		UserAgent:     nullStringFromOptional(userAgent),
+		IpAddress:     nullStringFromOptional(ipAddress),
+		ExpiresAt:     now.Add(time.Duration(absoluteTimeoutMinutes) * time.Minute),
+		IdleExpiresAt: now.Add(time.Duration(idleTimeoutMinutes) * time.Minute),
+		LastSeenAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	if err != nil {
+		return "", dbgen.UserSession{}, err
+	}
+	return rawToken, session, nil
+}
 
 func GetActiveSession(
 	ctx context.Context,
@@ -51,4 +86,11 @@ func GetActiveSession(
 		return nil, err
 	}
 	return &touched, nil
+}
+
+func nullStringFromOptional(value *string) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *value, Valid: true}
 }

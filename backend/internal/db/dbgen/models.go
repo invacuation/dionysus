@@ -79,6 +79,23 @@ type PermissionAssignment struct {
 	UpdatedAt     time.Time
 }
 
+type User struct {
+	ID          string
+	Username    string
+	DisplayName string
+	IsActive    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type UserPasswordCredential struct {
+	ID           string
+	UserID       string
+	PasswordHash string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type UserSession struct {
 	ID            string
 	UserID        string

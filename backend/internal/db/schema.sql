@@ -84,3 +84,21 @@ CREATE TABLE user_sessions (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE users (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    username VARCHAR(150) NOT NULL,
+    display_name VARCHAR(200) NOT NULL,
+    is_active BOOLEAN NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE user_password_credentials (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    user_id VARCHAR NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

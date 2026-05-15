@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -26,9 +27,77 @@ type actorResponse struct {
 	LocalAuthEnabled        bool    `json:"local_auth_enabled"`
 }
 
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 func mountAuthRoutes(router chi.Router, settings config.Settings, deps Dependencies) {
+	router.Post("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		createBrowserSession(w, r, settings, deps)
+	})
 	router.Get("/api/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		getCurrentActor(w, r, settings, deps)
+	})
+}
+
+func createBrowserSession(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if deps.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
+		return
+	}
+	if !settings.LocalAuthEnabled {
+		writeError(w, http.StatusForbidden, "Local authentication is disabled")
+		return
+	}
+	var credentials loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid login request")
+		return
+	}
+	user, err := identity.AuthenticateUser(r.Context(), deps.DB, credentials.Username, credentials.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Invalid username or password")
+		return
+	}
+	userAgent := r.Header.Get("User-Agent")
+	rawToken, session, err := identity.CreateSession(
+		r.Context(),
+		deps.DB,
+		*user,
+		time.Now().UTC(),
+		settings.SessionIdleTimeoutMinutes,
+		settings.SessionAbsoluteTimeoutMinutes,
+		&userAgent,
+		nil,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    rawToken,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+	writeJSON(w, http.StatusOK, actorResponse{
+		ActorType:               identity.ActorTypeUser,
+		ActorID:                 user.ID,
+		DisplayName:             user.DisplayName,
+		PrincipalType:           identity.PrincipalTypeUser,
+		PrincipalID:             user.ID,
+		AuthMethod:              identity.AuthMethodSession,
+		SessionID:               &session.ID,
+		MixedCredentialsPresent: false,
+		BearerTokenPresent:      false,
+		SessionCookiePresent:    true,
+		LocalAuthEnabled:        settings.LocalAuthEnabled,
 	})
 }
 

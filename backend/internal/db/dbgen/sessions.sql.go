@@ -7,8 +7,79 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
+
+const createUserSession = `-- name: CreateUserSession :one
+INSERT INTO user_sessions (
+    id,
+    user_id,
+    token_digest,
+    user_agent,
+    ip_address,
+    expires_at,
+    idle_expires_at,
+    last_seen_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    user_id,
+    token_digest,
+    user_agent,
+    ip_address,
+    expires_at,
+    idle_expires_at,
+    revoked_at,
+    last_seen_at,
+    created_at,
+    updated_at
+`
+
+type CreateUserSessionParams struct {
+	ID            string
+	UserID        string
+	TokenDigest   string
+	UserAgent     sql.NullString
+	IpAddress     sql.NullString
+	ExpiresAt     time.Time
+	IdleExpiresAt time.Time
+	LastSeenAt    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error) {
+	row := q.db.QueryRowContext(ctx, createUserSession,
+		arg.ID,
+		arg.UserID,
+		arg.TokenDigest,
+		arg.UserAgent,
+		arg.IpAddress,
+		arg.ExpiresAt,
+		arg.IdleExpiresAt,
+		arg.LastSeenAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i UserSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenDigest,
+		&i.UserAgent,
+		&i.IpAddress,
+		&i.ExpiresAt,
+		&i.IdleExpiresAt,
+		&i.RevokedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getUserSessionByTokenDigest = `-- name: GetUserSessionByTokenDigest :one
 SELECT

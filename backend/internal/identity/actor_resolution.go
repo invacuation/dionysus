@@ -63,5 +63,37 @@ func ResolveAuthenticatedActor(
 		}, nil
 	}
 
+	if sessionPresent {
+		session, err := GetActiveSession(ctx, conn, *credentials.SessionCookie, credentials.Now, credentials.IdleTimeoutMinutes)
+		if err != nil {
+			return nil, err
+		}
+		if session == nil {
+			return nil, nil
+		}
+		queries := dbgen.New(conn)
+		user, err := queries.GetUser(ctx, session.UserID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !user.IsActive {
+			return nil, nil
+		}
+		return &AuthenticatedActor{
+			ActorType:            ActorTypeUser,
+			ActorID:              user.ID,
+			DisplayName:          user.DisplayName,
+			PrincipalType:        PrincipalTypeUser,
+			PrincipalID:          user.ID,
+			AuthMethod:           AuthMethodSession,
+			SessionID:            &session.ID,
+			BearerTokenPresent:   false,
+			SessionCookiePresent: true,
+		}, nil
+	}
+
 	return nil, nil
 }
