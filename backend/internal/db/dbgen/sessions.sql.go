@@ -117,6 +117,136 @@ func (q *Queries) GetUserSessionByTokenDigest(ctx context.Context, tokenDigest s
 	return i, err
 }
 
+const getUserSessionWithUser = `-- name: GetUserSessionWithUser :one
+SELECT
+    user_sessions.id,
+    user_sessions.user_id,
+    users.username,
+    users.display_name,
+    user_sessions.token_digest,
+    user_sessions.user_agent,
+    user_sessions.ip_address,
+    user_sessions.expires_at,
+    user_sessions.idle_expires_at,
+    user_sessions.revoked_at,
+    user_sessions.last_seen_at,
+    user_sessions.created_at,
+    user_sessions.updated_at
+FROM user_sessions
+JOIN users ON users.id = user_sessions.user_id
+WHERE user_sessions.id = ?
+`
+
+type GetUserSessionWithUserRow struct {
+	ID            string
+	UserID        string
+	Username      string
+	DisplayName   string
+	TokenDigest   string
+	UserAgent     sql.NullString
+	IpAddress     sql.NullString
+	ExpiresAt     time.Time
+	IdleExpiresAt time.Time
+	RevokedAt     sql.NullTime
+	LastSeenAt    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) GetUserSessionWithUser(ctx context.Context, id string) (GetUserSessionWithUserRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserSessionWithUser, id)
+	var i GetUserSessionWithUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Username,
+		&i.DisplayName,
+		&i.TokenDigest,
+		&i.UserAgent,
+		&i.IpAddress,
+		&i.ExpiresAt,
+		&i.IdleExpiresAt,
+		&i.RevokedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listUserSessionsWithUsers = `-- name: ListUserSessionsWithUsers :many
+SELECT
+    user_sessions.id,
+    user_sessions.user_id,
+    users.username,
+    users.display_name,
+    user_sessions.token_digest,
+    user_sessions.user_agent,
+    user_sessions.ip_address,
+    user_sessions.expires_at,
+    user_sessions.idle_expires_at,
+    user_sessions.revoked_at,
+    user_sessions.last_seen_at,
+    user_sessions.created_at,
+    user_sessions.updated_at
+FROM user_sessions
+JOIN users ON users.id = user_sessions.user_id
+ORDER BY user_sessions.created_at DESC
+`
+
+type ListUserSessionsWithUsersRow struct {
+	ID            string
+	UserID        string
+	Username      string
+	DisplayName   string
+	TokenDigest   string
+	UserAgent     sql.NullString
+	IpAddress     sql.NullString
+	ExpiresAt     time.Time
+	IdleExpiresAt time.Time
+	RevokedAt     sql.NullTime
+	LastSeenAt    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) ListUserSessionsWithUsers(ctx context.Context) ([]ListUserSessionsWithUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSessionsWithUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserSessionsWithUsersRow
+	for rows.Next() {
+		var i ListUserSessionsWithUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Username,
+			&i.DisplayName,
+			&i.TokenDigest,
+			&i.UserAgent,
+			&i.IpAddress,
+			&i.ExpiresAt,
+			&i.IdleExpiresAt,
+			&i.RevokedAt,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeUserSession = `-- name: RevokeUserSession :one
 UPDATE user_sessions
 SET

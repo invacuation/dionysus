@@ -78,3 +78,41 @@ RETURNING
     last_seen_at,
     created_at,
     updated_at;
+
+-- name: ListUserSessionsWithUsers :many
+SELECT
+    user_sessions.id,
+    user_sessions.user_id,
+    users.username,
+    users.display_name,
+    user_sessions.token_digest,
+    user_sessions.user_agent,
+    user_sessions.ip_address,
+    user_sessions.expires_at,
+    user_sessions.idle_expires_at,
+    user_sessions.revoked_at,
+    user_sessions.last_seen_at,
+    user_sessions.created_at,
+    user_sessions.updated_at
+FROM user_sessions
+JOIN users ON users.id = user_sessions.user_id
+ORDER BY user_sessions.created_at DESC;
+
+-- name: GetUserSessionWithUser :one
+SELECT
+    user_sessions.id,
+    user_sessions.user_id,
+    users.username,
+    users.display_name,
+    user_sessions.token_digest,
+    user_sessions.user_agent,
+    user_sessions.ip_address,
+    user_sessions.expires_at,
+    user_sessions.idle_expires_at,
+    user_sessions.revoked_at,
+    user_sessions.last_seen_at,
+    user_sessions.created_at,
+    user_sessions.updated_at
+FROM user_sessions
+JOIN users ON users.id = user_sessions.user_id
+WHERE user_sessions.id = ?;
