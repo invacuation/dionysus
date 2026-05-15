@@ -29,6 +29,7 @@ func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	router := chi.NewRouter()
 	router.Use(RequestBodyLimit(settings.MaxReportUploadBytes))
 	router.Get("/healthz", healthz)
+	mountAuthRoutes(router, settings, deps)
 	mountOAuthRoutes(router, settings, deps)
 	mountFrontend(router, settings.FrontendDist)
 	return router

@@ -11,8 +11,17 @@ const AdminPermission = "admin:*"
 var ErrForbidden = errors.New("Forbidden")
 
 type AuthenticatedActor struct {
-	PrincipalType string
-	PrincipalID   string
+	ActorType               string
+	ActorID                 string
+	DisplayName             string
+	PrincipalType           string
+	PrincipalID             string
+	AuthMethod              string
+	SessionID               *string
+	MachineTokenID          *string
+	MixedCredentialsPresent bool
+	BearerTokenPresent      bool
+	SessionCookiePresent    bool
 }
 
 func EnsureActorPermission(
