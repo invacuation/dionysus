@@ -69,6 +69,53 @@ RETURNING
     created_at,
     updated_at;
 
+-- name: UpdateMachineCredentialSecret :one
+UPDATE machine_credentials
+SET
+    client_secret_digest = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at;
+
+-- name: RevokeMachineCredential :one
+UPDATE machine_credentials
+SET
+    is_active = false,
+    revoked_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at;
+
+-- name: RevokeMachineAccessTokensForCredential :exec
+UPDATE machine_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE machine_credential_id = ? AND revoked_at IS NULL;
+
+-- name: RevokeMachineRefreshTokensForCredential :exec
+UPDATE machine_refresh_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE machine_credential_id = ? AND revoked_at IS NULL;
+
 -- name: CreateMachineToken :one
 INSERT INTO machine_tokens (
     id,

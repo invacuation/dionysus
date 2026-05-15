@@ -106,6 +106,75 @@ func CreateMachineCredential(
 	return rawSecret, credential, nil
 }
 
+func RegenerateMachineClientSecret(
+	ctx context.Context,
+	conn *sql.DB,
+	credentialID string,
+	now time.Time,
+	revokeTokens bool,
+) (string, dbgen.MachineCredential, error) {
+	rawSecret, err := security.GenerateToken()
+	if err != nil {
+		return "", dbgen.MachineCredential{}, err
+	}
+	queries := dbgen.New(conn)
+	now = now.UTC()
+	credential, err := queries.UpdateMachineCredentialSecret(ctx, dbgen.UpdateMachineCredentialSecretParams{
+		ClientSecretDigest: security.TokenDigest(rawSecret),
+		UpdatedAt:          now,
+		ID:                 credentialID,
+	})
+	if err != nil {
+		return "", dbgen.MachineCredential{}, err
+	}
+	if revokeTokens {
+		if err := revokeMachineTokensForCredential(ctx, queries, credentialID, now); err != nil {
+			return "", dbgen.MachineCredential{}, err
+		}
+	}
+	return rawSecret, credential, nil
+}
+
+func RevokeMachineCredential(
+	ctx context.Context,
+	conn *sql.DB,
+	credentialID string,
+	now time.Time,
+	revokeTokens bool,
+) (dbgen.MachineCredential, error) {
+	queries := dbgen.New(conn)
+	now = now.UTC()
+	credential, err := queries.RevokeMachineCredential(ctx, dbgen.RevokeMachineCredentialParams{
+		RevokedAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+		ID:        credentialID,
+	})
+	if err != nil {
+		return dbgen.MachineCredential{}, err
+	}
+	if revokeTokens {
+		if err := revokeMachineTokensForCredential(ctx, queries, credentialID, now); err != nil {
+			return dbgen.MachineCredential{}, err
+		}
+	}
+	return credential, nil
+}
+
+func revokeMachineTokensForCredential(ctx context.Context, queries *dbgen.Queries, credentialID string, now time.Time) error {
+	if err := queries.RevokeMachineAccessTokensForCredential(ctx, dbgen.RevokeMachineAccessTokensForCredentialParams{
+		RevokedAt:           sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:           now,
+		MachineCredentialID: credentialID,
+	}); err != nil {
+		return err
+	}
+	return queries.RevokeMachineRefreshTokensForCredential(ctx, dbgen.RevokeMachineRefreshTokensForCredentialParams{
+		RevokedAt:           sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:           now,
+		MachineCredentialID: credentialID,
+	})
+}
+
 func RefreshMachineToken(
 	ctx context.Context,
 	conn *sql.DB,

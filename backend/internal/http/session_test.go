@@ -15,6 +15,8 @@ import (
 	"github.com/invacuation/dionysus/backend/internal/identity"
 )
 
+type httpDB = *sql.DB
+
 const pythonArgon2PasswordHash = "$argon2id$v=19$m=65536,t=3,p=4$QuVbsCm0NDtiCTn5MdE0uw$NLEfzmIHyfK15B1McgJvPtRY4OTcNkq6/qH7KRGzfHU"
 
 func TestAuthSessionCreatesBrowserSession(t *testing.T) {
@@ -331,6 +333,24 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 			client_id VARCHAR(64) NOT NULL UNIQUE,
 			client_secret_digest VARCHAR(64) NOT NULL,
 			is_active BOOLEAN NOT NULL,
+			revoked_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE machine_tokens (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			machine_credential_id VARCHAR NOT NULL,
+			token_digest VARCHAR(64) NOT NULL,
+			expires_at DATETIME NOT NULL,
+			revoked_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE machine_refresh_tokens (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			machine_credential_id VARCHAR NOT NULL,
+			token_digest VARCHAR(64) NOT NULL,
+			expires_at DATETIME NOT NULL,
 			revoked_at DATETIME,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL

@@ -20,6 +20,10 @@ type machineCredentialCreateRequest struct {
 	Name string `json:"name"`
 }
 
+type machineCredentialTokenActionRequest struct {
+	RevokeTokens *bool `json:"revoke_tokens"`
+}
+
 type machineCredentialResponse struct {
 	ID                     string     `json:"id"`
 	Name                   string     `json:"name"`
@@ -48,6 +52,12 @@ func mountMachineCredentialRoutes(router chi.Router, settings config.Settings, d
 	})
 	router.Post("/api/admin/machine-credentials", func(w http.ResponseWriter, r *http.Request) {
 		createMachineCredential(w, r, settings, deps)
+	})
+	router.Post("/api/admin/machine-credentials/{credentialID}/regenerate-secret", func(w http.ResponseWriter, r *http.Request) {
+		regenerateMachineCredentialSecret(w, r, settings, deps)
+	})
+	router.Post("/api/admin/machine-credentials/{credentialID}/revoke", func(w http.ResponseWriter, r *http.Request) {
+		revokeMachineCredential(w, r, settings, deps)
 	})
 }
 
@@ -89,6 +99,79 @@ func createMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 		machineCredentialResponse: machineCredentialResponseFromDB(credential),
 		ClientSecret:              rawSecret,
 	})
+}
+
+func regenerateMachineCredentialSecret(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission}); !ok {
+		return
+	}
+	revokeTokens, ok := tokenActionRevokeTokens(w, r)
+	if !ok {
+		return
+	}
+	rawSecret, credential, err := identity.RegenerateMachineClientSecret(
+		r.Context(),
+		deps.DB,
+		chi.URLParam(r, "credentialID"),
+		time.Now().UTC(),
+		revokeTokens,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Machine credential not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeJSON(w, http.StatusOK, machineCredentialWithSecretResponse{
+		machineCredentialResponse: machineCredentialResponseFromDB(credential),
+		ClientSecret:              rawSecret,
+	})
+}
+
+func revokeMachineCredential(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission}); !ok {
+		return
+	}
+	revokeTokens, ok := tokenActionRevokeTokens(w, r)
+	if !ok {
+		return
+	}
+	credential, err := identity.RevokeMachineCredential(
+		r.Context(),
+		deps.DB,
+		chi.URLParam(r, "credentialID"),
+		time.Now().UTC(),
+		revokeTokens,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Machine credential not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeJSON(w, http.StatusOK, machineCredentialResponseFromDB(credential))
+}
+
+func tokenActionRevokeTokens(w http.ResponseWriter, r *http.Request) (bool, bool) {
+	if r.Body == nil {
+		return true, true
+	}
+	payload := machineCredentialTokenActionRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if errors.Is(err, http.ErrBodyReadAfterClose) {
+			return true, true
+		}
+		writeError(w, http.StatusUnprocessableEntity, "Invalid machine credential request")
+		return false, false
+	}
+	if payload.RevokeTokens == nil {
+		return true, true
+	}
+	return *payload.RevokeTokens, true
 }
 
 func requireActorPermission(

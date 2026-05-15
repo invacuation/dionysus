@@ -328,6 +328,65 @@ func (q *Queries) ListMachineCredentials(ctx context.Context) ([]MachineCredenti
 	return items, nil
 }
 
+const revokeMachineAccessTokensForCredential = `-- name: RevokeMachineAccessTokensForCredential :exec
+UPDATE machine_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE machine_credential_id = ? AND revoked_at IS NULL
+`
+
+type RevokeMachineAccessTokensForCredentialParams struct {
+	RevokedAt           sql.NullTime
+	UpdatedAt           time.Time
+	MachineCredentialID string
+}
+
+func (q *Queries) RevokeMachineAccessTokensForCredential(ctx context.Context, arg RevokeMachineAccessTokensForCredentialParams) error {
+	_, err := q.db.ExecContext(ctx, revokeMachineAccessTokensForCredential, arg.RevokedAt, arg.UpdatedAt, arg.MachineCredentialID)
+	return err
+}
+
+const revokeMachineCredential = `-- name: RevokeMachineCredential :one
+UPDATE machine_credentials
+SET
+    is_active = false,
+    revoked_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type RevokeMachineCredentialParams struct {
+	RevokedAt sql.NullTime
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) RevokeMachineCredential(ctx context.Context, arg RevokeMachineCredentialParams) (MachineCredential, error) {
+	row := q.db.QueryRowContext(ctx, revokeMachineCredential, arg.RevokedAt, arg.UpdatedAt, arg.ID)
+	var i MachineCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ClientID,
+		&i.ClientSecretDigest,
+		&i.IsActive,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const revokeMachineRefreshToken = `-- name: RevokeMachineRefreshToken :one
 UPDATE machine_refresh_tokens
 SET
@@ -358,6 +417,64 @@ func (q *Queries) RevokeMachineRefreshToken(ctx context.Context, arg RevokeMachi
 		&i.MachineCredentialID,
 		&i.TokenDigest,
 		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const revokeMachineRefreshTokensForCredential = `-- name: RevokeMachineRefreshTokensForCredential :exec
+UPDATE machine_refresh_tokens
+SET
+    revoked_at = ?,
+    updated_at = ?
+WHERE machine_credential_id = ? AND revoked_at IS NULL
+`
+
+type RevokeMachineRefreshTokensForCredentialParams struct {
+	RevokedAt           sql.NullTime
+	UpdatedAt           time.Time
+	MachineCredentialID string
+}
+
+func (q *Queries) RevokeMachineRefreshTokensForCredential(ctx context.Context, arg RevokeMachineRefreshTokensForCredentialParams) error {
+	_, err := q.db.ExecContext(ctx, revokeMachineRefreshTokensForCredential, arg.RevokedAt, arg.UpdatedAt, arg.MachineCredentialID)
+	return err
+}
+
+const updateMachineCredentialSecret = `-- name: UpdateMachineCredentialSecret :one
+UPDATE machine_credentials
+SET
+    client_secret_digest = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type UpdateMachineCredentialSecretParams struct {
+	ClientSecretDigest string
+	UpdatedAt          time.Time
+	ID                 string
+}
+
+func (q *Queries) UpdateMachineCredentialSecret(ctx context.Context, arg UpdateMachineCredentialSecretParams) (MachineCredential, error) {
+	row := q.db.QueryRowContext(ctx, updateMachineCredentialSecret, arg.ClientSecretDigest, arg.UpdatedAt, arg.ID)
+	var i MachineCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ClientID,
+		&i.ClientSecretDigest,
+		&i.IsActive,
 		&i.RevokedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
