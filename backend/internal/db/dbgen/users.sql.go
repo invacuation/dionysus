@@ -99,6 +99,48 @@ func (q *Queries) GetUserPasswordCredentialByUsername(ctx context.Context, usern
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+FROM users
+ORDER BY username
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUserPasswordCredential = `-- name: UpdateUserPasswordCredential :one
 UPDATE user_password_credentials
 SET

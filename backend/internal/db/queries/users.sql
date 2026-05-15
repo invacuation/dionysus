@@ -9,6 +9,17 @@ SELECT
 FROM users
 WHERE id = ?;
 
+-- name: ListUsers :many
+SELECT
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+FROM users
+ORDER BY username;
+
 -- name: GetUserPasswordCredentialByUsername :one
 SELECT
     users.id,

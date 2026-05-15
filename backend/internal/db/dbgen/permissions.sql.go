@@ -57,6 +57,90 @@ func (q *Queries) ListGroupIDsForPrincipal(ctx context.Context, arg ListGroupIDs
 	return items, nil
 }
 
+const listGroupMemberships = `-- name: ListGroupMemberships :many
+SELECT
+    id,
+    group_id,
+    principal_type,
+    principal_id,
+    created_at,
+    updated_at
+FROM group_memberships
+ORDER BY created_at
+`
+
+func (q *Queries) ListGroupMemberships(ctx context.Context) ([]GroupMembership, error) {
+	rows, err := q.db.QueryContext(ctx, listGroupMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GroupMembership
+	for rows.Next() {
+		var i GroupMembership
+		if err := rows.Scan(
+			&i.ID,
+			&i.GroupID,
+			&i.PrincipalType,
+			&i.PrincipalID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGroups = `-- name: ListGroups :many
+SELECT
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+FROM groups
+ORDER BY name
+`
+
+func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
+	rows, err := q.db.QueryContext(ctx, listGroups)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Group
+	for rows.Next() {
+		var i Group
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.DisplayName,
+			&i.IsProtected,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMatchingAssignmentsForPrincipal = `-- name: ListMatchingAssignmentsForPrincipal :many
 SELECT
     id,
@@ -99,6 +183,54 @@ func (q *Queries) ListMatchingAssignmentsForPrincipal(ctx context.Context, arg L
 		arg.ScopeType,
 		arg.ScopeID,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PermissionAssignment
+	for rows.Next() {
+		var i PermissionAssignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalType,
+			&i.PrincipalID,
+			&i.Permission,
+			&i.Effect,
+			&i.ScopeType,
+			&i.ScopeID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPermissionAssignments = `-- name: ListPermissionAssignments :many
+SELECT
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+FROM permission_assignments
+ORDER BY created_at
+`
+
+func (q *Queries) ListPermissionAssignments(ctx context.Context) ([]PermissionAssignment, error) {
+	rows, err := q.db.QueryContext(ctx, listPermissionAssignments)
 	if err != nil {
 		return nil, err
 	}

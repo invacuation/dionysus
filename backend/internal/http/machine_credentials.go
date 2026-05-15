@@ -20,6 +20,13 @@ type machineCredentialCreateRequest struct {
 	Name string `json:"name"`
 }
 
+func optionalStringFromNull(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
+}
+
 type machineCredentialTokenActionRequest struct {
 	RevokeTokens *bool `json:"revoke_tokens"`
 }

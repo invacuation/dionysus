@@ -497,3 +497,53 @@ func insertHTTPPermission(t *testing.T, conn *sql.DB, fixture httpPermissionFixt
 		t.Fatalf("insert permission: %v", err)
 	}
 }
+
+type httpGroupFixture struct {
+	ID          string
+	Name        string
+	DisplayName string
+	IsProtected bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func insertHTTPGroup(t *testing.T, conn *sql.DB, fixture httpGroupFixture) {
+	t.Helper()
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`INSERT INTO groups (id, name, display_name, is_protected, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		fixture.ID,
+		fixture.Name,
+		fixture.DisplayName,
+		fixture.IsProtected,
+		fixture.CreatedAt,
+		fixture.UpdatedAt,
+	); err != nil {
+		t.Fatalf("insert group: %v", err)
+	}
+}
+
+type httpMembershipFixture struct {
+	ID            string
+	GroupID       string
+	PrincipalType string
+	PrincipalID   string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func insertHTTPMembership(t *testing.T, conn *sql.DB, fixture httpMembershipFixture) {
+	t.Helper()
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`INSERT INTO group_memberships (id, group_id, principal_type, principal_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		fixture.ID,
+		fixture.GroupID,
+		fixture.PrincipalType,
+		fixture.PrincipalID,
+		fixture.CreatedAt,
+		fixture.UpdatedAt,
+	); err != nil {
+		t.Fatalf("insert membership: %v", err)
+	}
+}

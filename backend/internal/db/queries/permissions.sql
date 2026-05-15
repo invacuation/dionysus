@@ -32,3 +32,39 @@ WHERE
 SELECT name
 FROM groups
 WHERE id = ?;
+
+-- name: ListGroups :many
+SELECT
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+FROM groups
+ORDER BY name;
+
+-- name: ListGroupMemberships :many
+SELECT
+    id,
+    group_id,
+    principal_type,
+    principal_id,
+    created_at,
+    updated_at
+FROM group_memberships
+ORDER BY created_at;
+
+-- name: ListPermissionAssignments :many
+SELECT
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+FROM permission_assignments
+ORDER BY created_at;

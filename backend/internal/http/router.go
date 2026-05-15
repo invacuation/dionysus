@@ -30,6 +30,7 @@ func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	router.Use(RequestBodyLimit(settings.MaxReportUploadBytes))
 	router.Get("/healthz", healthz)
 	mountAuthRoutes(router, settings, deps)
+	mountAccessRoutes(router, settings, deps)
 	mountMachineCredentialRoutes(router, settings, deps)
 	mountOAuthRoutes(router, settings, deps)
 	mountFrontend(router, settings.FrontendDist)
