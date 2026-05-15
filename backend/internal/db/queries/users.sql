@@ -21,3 +21,26 @@ SELECT
 FROM users
 JOIN user_password_credentials ON user_password_credentials.user_id = users.id
 WHERE users.username = ?;
+
+-- name: GetUserPasswordCredentialByUserID :one
+SELECT
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+FROM user_password_credentials
+WHERE user_id = ?;
+
+-- name: UpdateUserPasswordCredential :one
+UPDATE user_password_credentials
+SET
+    password_hash = ?,
+    updated_at = ?
+WHERE user_id = ?
+RETURNING
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at;

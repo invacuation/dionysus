@@ -1,13 +1,23 @@
 package security
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+)
+
+const (
+	argon2Memory      = 65536
+	argon2Iterations  = 3
+	argon2Parallelism = 4
+	argon2SaltLength  = 16
+	argon2KeyLength   = 32
 )
 
 type argon2idHash struct {
@@ -32,6 +42,39 @@ func VerifyPassword(password string, encodedHash string) bool {
 		uint32(len(parsed.hash)),
 	)
 	return subtle.ConstantTimeCompare(hash, parsed.hash) == 1
+}
+
+func HashPassword(password string) (string, error) {
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
+	salt := make([]byte, argon2SaltLength)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", fmt.Errorf("generate password salt: %w", err)
+	}
+	hash := argon2.IDKey(
+		[]byte(password),
+		salt,
+		argon2Iterations,
+		argon2Memory,
+		argon2Parallelism,
+		argon2KeyLength,
+	)
+	return fmt.Sprintf(
+		"$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
+		argon2Memory,
+		argon2Iterations,
+		argon2Parallelism,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(hash),
+	), nil
+}
+
+func ValidatePassword(password string) error {
+	if len(password) < 15 || len(password) > 256 || strings.TrimSpace(password) == "" {
+		return fmt.Errorf("invalid password")
+	}
+	return nil
 }
 
 func parseArgon2idHash(encodedHash string) (argon2idHash, error) {

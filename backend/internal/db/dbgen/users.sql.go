@@ -36,6 +36,30 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 	return i, err
 }
 
+const getUserPasswordCredentialByUserID = `-- name: GetUserPasswordCredentialByUserID :one
+SELECT
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+FROM user_password_credentials
+WHERE user_id = ?
+`
+
+func (q *Queries) GetUserPasswordCredentialByUserID(ctx context.Context, userID string) (UserPasswordCredential, error) {
+	row := q.db.QueryRowContext(ctx, getUserPasswordCredentialByUserID, userID)
+	var i UserPasswordCredential
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserPasswordCredentialByUsername = `-- name: GetUserPasswordCredentialByUsername :one
 SELECT
     users.id,
@@ -71,6 +95,39 @@ func (q *Queries) GetUserPasswordCredentialByUsername(ctx context.Context, usern
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const updateUserPasswordCredential = `-- name: UpdateUserPasswordCredential :one
+UPDATE user_password_credentials
+SET
+    password_hash = ?,
+    updated_at = ?
+WHERE user_id = ?
+RETURNING
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+`
+
+type UpdateUserPasswordCredentialParams struct {
+	PasswordHash string
+	UpdatedAt    time.Time
+	UserID       string
+}
+
+func (q *Queries) UpdateUserPasswordCredential(ctx context.Context, arg UpdateUserPasswordCredentialParams) (UserPasswordCredential, error) {
+	row := q.db.QueryRowContext(ctx, updateUserPasswordCredential, arg.PasswordHash, arg.UpdatedAt, arg.UserID)
+	var i UserPasswordCredential
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

@@ -162,6 +162,133 @@ func TestAuthSessionDeleteRevokesBrowserSession(t *testing.T) {
 	}
 }
 
+func TestAuthPasswordChangeUpdatesPassword(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, router, "correct horse battery staple")
+
+	changeResponse := httptest.NewRecorder()
+	changeRequest := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/auth/password",
+		strings.NewReader(`{"current_password":"correct horse battery staple","new_password":"new correct horse battery"}`),
+	)
+	changeRequest.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		changeRequest.AddCookie(cookie)
+	}
+	router.ServeHTTP(changeResponse, changeRequest)
+
+	if changeResponse.Code != http.StatusNoContent {
+		t.Fatalf("password change status = %d, want %d; body = %s", changeResponse.Code, http.StatusNoContent, changeResponse.Body.String())
+	}
+	oldLogin := loginHTTPUser(t, router, "correct horse battery staple")
+	if oldLogin.Code != http.StatusUnauthorized {
+		t.Fatalf("old password login status = %d, want %d", oldLogin.Code, http.StatusUnauthorized)
+	}
+	newLogin := loginHTTPUser(t, router, "new correct horse battery")
+	if newLogin.Code != http.StatusOK {
+		t.Fatalf("new password login status = %d, want %d; body = %s", newLogin.Code, http.StatusOK, newLogin.Body.String())
+	}
+}
+
+func TestAuthPasswordChangeRejectsWrongCurrentPassword(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, router, "correct horse battery staple")
+
+	changeResponse := httptest.NewRecorder()
+	changeRequest := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/auth/password",
+		strings.NewReader(`{"current_password":"wrong password value","new_password":"new correct horse battery"}`),
+	)
+	changeRequest.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		changeRequest.AddCookie(cookie)
+	}
+	router.ServeHTTP(changeResponse, changeRequest)
+
+	if changeResponse.Code != http.StatusBadRequest {
+		t.Fatalf("password change status = %d, want %d", changeResponse.Code, http.StatusBadRequest)
+	}
+	assertJSONDetail(t, changeResponse, "Current password is incorrect")
+	validLogin := loginHTTPUser(t, router, "correct horse battery staple")
+	if validLogin.Code != http.StatusOK {
+		t.Fatalf("valid login status = %d, want %d", validLogin.Code, http.StatusOK)
+	}
+}
+
+func TestAuthPasswordChangeDisabledWhenLocalAuthDisabled(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	loginRouter := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, loginRouter, "correct horse battery staple")
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              false,
+	}, WithDB(conn))
+
+	changeResponse := httptest.NewRecorder()
+	changeRequest := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/auth/password",
+		strings.NewReader(`{"current_password":"correct horse battery staple","new_password":"new correct horse battery"}`),
+	)
+	changeRequest.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		changeRequest.AddCookie(cookie)
+	}
+	router.ServeHTTP(changeResponse, changeRequest)
+
+	if changeResponse.Code != http.StatusForbidden {
+		t.Fatalf("password change status = %d, want %d", changeResponse.Code, http.StatusForbidden)
+	}
+	assertJSONDetail(t, changeResponse, "Local authentication is disabled")
+}
+
 func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := db.Open("sqlite:///:memory:")
@@ -242,6 +369,19 @@ func insertHTTPUser(t *testing.T, conn *sql.DB, fixture httpUserFixture) {
 	); err != nil {
 		t.Fatalf("insert password credential: %v", err)
 	}
+}
+
+func loginHTTPUser(t *testing.T, router http.Handler, password string) *httptest.ResponseRecorder {
+	t.Helper()
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/auth/session",
+		strings.NewReader(`{"username":"alice","password":"`+password+`"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(response, request)
+	return response
 }
 
 func assertHTTPSessionCount(t *testing.T, conn *sql.DB, want int) {

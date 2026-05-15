@@ -32,6 +32,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type passwordChangeRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 func mountAuthRoutes(router chi.Router, settings config.Settings, deps Dependencies) {
 	router.Post("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
 		createBrowserSession(w, r, settings, deps)
@@ -41,6 +46,9 @@ func mountAuthRoutes(router chi.Router, settings config.Settings, deps Dependenc
 	})
 	router.Get("/api/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		getCurrentActor(w, r, settings, deps)
+	})
+	router.Patch("/api/auth/password", func(w http.ResponseWriter, r *http.Request) {
+		changeCurrentUserPassword(w, r, settings, deps)
 	})
 }
 
@@ -180,4 +188,68 @@ func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Set
 		SessionCookiePresent:    actor.SessionCookiePresent,
 		LocalAuthEnabled:        settings.LocalAuthEnabled,
 	})
+}
+
+func changeCurrentUserPassword(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if deps.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
+		return
+	}
+	if !settings.LocalAuthEnabled {
+		writeError(w, http.StatusForbidden, "Local authentication is disabled")
+		return
+	}
+	actor, ok := authenticatedActorFromRequest(w, r, settings, deps)
+	if !ok {
+		return
+	}
+	if actor.ActorType != identity.ActorTypeUser {
+		writeError(w, http.StatusForbidden, "Password changes require a user session")
+		return
+	}
+	var payload passwordChangeRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid password change request")
+		return
+	}
+	if err := identity.ChangeUserPassword(
+		r.Context(),
+		deps.DB,
+		actor.ActorID,
+		payload.CurrentPassword,
+		payload.NewPassword,
+		time.Now().UTC(),
+	); err != nil {
+		if err == identity.ErrCurrentPasswordIncorrect {
+			writeError(w, http.StatusBadRequest, "Current password is incorrect")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func authenticatedActorFromRequest(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) (*identity.AuthenticatedActor, bool) {
+	bearerToken := identity.ParseBearerAuthorization(r.Header.Get("Authorization"))
+	var sessionToken *string
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		sessionToken = &cookie.Value
+	}
+	actor, err := identity.ResolveAuthenticatedActor(r.Context(), deps.DB, identity.ActorCredentials{
+		BearerToken:        bearerToken,
+		SessionCookie:      sessionToken,
+		Now:                time.Now().UTC(),
+		IdleTimeoutMinutes: settings.SessionIdleTimeoutMinutes,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return nil, false
+	}
+	if actor == nil {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
+		return nil, false
+	}
+	return actor, true
 }
