@@ -365,7 +365,7 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 		)`,
 		`CREATE TABLE groups (
 			id VARCHAR PRIMARY KEY NOT NULL,
-			name VARCHAR(150) NOT NULL,
+			name VARCHAR(150) NOT NULL UNIQUE,
 			display_name VARCHAR(200) NOT NULL,
 			is_protected BOOLEAN NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -389,6 +389,41 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 		}
 	}
 	return conn
+}
+
+type httpMachineCredentialFixture struct {
+	ID                 string
+	Name               string
+	ClientID           string
+	ClientSecretDigest string
+	IsActive           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+func insertHTTPMachineCredential(t *testing.T, conn *sql.DB, fixture httpMachineCredentialFixture) {
+	t.Helper()
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`INSERT INTO machine_credentials (
+			id,
+			name,
+			client_id,
+			client_secret_digest,
+			is_active,
+			created_at,
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		fixture.ID,
+		fixture.Name,
+		fixture.ClientID,
+		fixture.ClientSecretDigest,
+		fixture.IsActive,
+		fixture.CreatedAt,
+		fixture.UpdatedAt,
+	); err != nil {
+		t.Fatalf("insert machine credential: %v", err)
+	}
 }
 
 type httpUserFixture struct {

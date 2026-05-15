@@ -27,6 +27,13 @@ func optionalStringFromNull(value sql.NullString) *string {
 	return &value.String
 }
 
+func nullStringFromPtr(value *string) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *value, Valid: true}
+}
+
 type machineCredentialTokenActionRequest struct {
 	RevokeTokens *bool `json:"revoke_tokens"`
 }

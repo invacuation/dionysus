@@ -8,7 +8,251 @@ package dbgen
 import (
 	"context"
 	"database/sql"
+	"time"
 )
+
+const createGroup = `-- name: CreateGroup :one
+INSERT INTO groups (
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+`
+
+type CreateGroupParams struct {
+	ID          string
+	Name        string
+	DisplayName string
+	IsProtected bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
+	row := q.db.QueryRowContext(ctx, createGroup,
+		arg.ID,
+		arg.Name,
+		arg.DisplayName,
+		arg.IsProtected,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.IsProtected,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createGroupMembership = `-- name: CreateGroupMembership :one
+INSERT INTO group_memberships (
+    id,
+    group_id,
+    principal_type,
+    principal_id,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    group_id,
+    principal_type,
+    principal_id,
+    created_at,
+    updated_at
+`
+
+type CreateGroupMembershipParams struct {
+	ID            string
+	GroupID       string
+	PrincipalType string
+	PrincipalID   string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) CreateGroupMembership(ctx context.Context, arg CreateGroupMembershipParams) (GroupMembership, error) {
+	row := q.db.QueryRowContext(ctx, createGroupMembership,
+		arg.ID,
+		arg.GroupID,
+		arg.PrincipalType,
+		arg.PrincipalID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i GroupMembership
+	err := row.Scan(
+		&i.ID,
+		&i.GroupID,
+		&i.PrincipalType,
+		&i.PrincipalID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createPermissionAssignment = `-- name: CreatePermissionAssignment :one
+INSERT INTO permission_assignments (
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+`
+
+type CreatePermissionAssignmentParams struct {
+	ID            string
+	PrincipalType string
+	PrincipalID   string
+	Permission    string
+	Effect        string
+	ScopeType     sql.NullString
+	ScopeID       sql.NullString
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) CreatePermissionAssignment(ctx context.Context, arg CreatePermissionAssignmentParams) (PermissionAssignment, error) {
+	row := q.db.QueryRowContext(ctx, createPermissionAssignment,
+		arg.ID,
+		arg.PrincipalType,
+		arg.PrincipalID,
+		arg.Permission,
+		arg.Effect,
+		arg.ScopeType,
+		arg.ScopeID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i PermissionAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalType,
+		&i.PrincipalID,
+		&i.Permission,
+		&i.Effect,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGroup = `-- name: GetGroup :one
+SELECT
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+FROM groups
+WHERE id = ?
+`
+
+func (q *Queries) GetGroup(ctx context.Context, id string) (Group, error) {
+	row := q.db.QueryRowContext(ctx, getGroup, id)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.IsProtected,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGroupByName = `-- name: GetGroupByName :one
+SELECT
+    id,
+    name,
+    display_name,
+    is_protected,
+    created_at,
+    updated_at
+FROM groups
+WHERE name = ?
+`
+
+func (q *Queries) GetGroupByName(ctx context.Context, name string) (Group, error) {
+	row := q.db.QueryRowContext(ctx, getGroupByName, name)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DisplayName,
+		&i.IsProtected,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGroupMembership = `-- name: GetGroupMembership :one
+SELECT
+    id,
+    group_id,
+    principal_type,
+    principal_id,
+    created_at,
+    updated_at
+FROM group_memberships
+WHERE group_id = ? AND principal_type = ? AND principal_id = ?
+`
+
+type GetGroupMembershipParams struct {
+	GroupID       string
+	PrincipalType string
+	PrincipalID   string
+}
+
+func (q *Queries) GetGroupMembership(ctx context.Context, arg GetGroupMembershipParams) (GroupMembership, error) {
+	row := q.db.QueryRowContext(ctx, getGroupMembership, arg.GroupID, arg.PrincipalType, arg.PrincipalID)
+	var i GroupMembership
+	err := row.Scan(
+		&i.ID,
+		&i.GroupID,
+		&i.PrincipalType,
+		&i.PrincipalID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getGroupName = `-- name: GetGroupName :one
 SELECT name
@@ -21,6 +265,66 @@ func (q *Queries) GetGroupName(ctx context.Context, id string) (string, error) {
 	var name string
 	err := row.Scan(&name)
 	return name, err
+}
+
+const getPermissionAssignment = `-- name: GetPermissionAssignment :one
+SELECT
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+FROM permission_assignments
+WHERE
+    principal_type = ?1
+    AND principal_id = ?2
+    AND permission = ?3
+    AND effect = ?4
+    AND (
+        scope_type = ?5
+        OR (scope_type IS NULL AND ?5 IS NULL)
+    )
+    AND (
+        scope_id = ?6
+        OR (scope_id IS NULL AND ?6 IS NULL)
+    )
+`
+
+type GetPermissionAssignmentParams struct {
+	PrincipalType string
+	PrincipalID   string
+	Permission    string
+	Effect        string
+	ScopeType     sql.NullString
+	ScopeID       sql.NullString
+}
+
+func (q *Queries) GetPermissionAssignment(ctx context.Context, arg GetPermissionAssignmentParams) (PermissionAssignment, error) {
+	row := q.db.QueryRowContext(ctx, getPermissionAssignment,
+		arg.PrincipalType,
+		arg.PrincipalID,
+		arg.Permission,
+		arg.Effect,
+		arg.ScopeType,
+		arg.ScopeID,
+	)
+	var i PermissionAssignment
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalType,
+		&i.PrincipalID,
+		&i.Permission,
+		&i.Effect,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listGroupIDsForPrincipal = `-- name: ListGroupIDsForPrincipal :many
