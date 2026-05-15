@@ -4,6 +4,7 @@ from dionysus.models.audit import AuditLogEvent
 from dionysus.models.base import Base
 from dionysus.models.findings import (
     FindingComment,
+    FindingReleaseStatusDecision,
     FindingStatus,
     FindingStatusChangeRequest,
     FindingStatusChangeState,
@@ -37,6 +38,7 @@ __all__ = [
     "AuditLogEvent",
     "Base",
     "FindingComment",
+    "FindingReleaseStatusDecision",
     "FindingStatus",
     "FindingStatusChangeRequest",
     "FindingStatusChangeState",

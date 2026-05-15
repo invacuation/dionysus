@@ -339,3 +339,83 @@ class FindingStatusChangeRequest(TimestampMixin, Base):
 
     project: Mapped[Project] = relationship()
     finding: Mapped[RawFindingInstance] = relationship(back_populates="status_change_requests")
+
+
+class FindingReleaseStatusDecision(TimestampMixin, Base):
+    """Durable release-line status decision for a finding identity."""
+
+    __tablename__ = "finding_release_status_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ("
+            "'open', 'accepted_risk', 'false_positive', "
+            "'mitigated', 'suppressed', 'fixed'"
+            ")",
+            name="status",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "release_scope_asset_id",
+            "release_version_asset_id",
+            "scanner_kind",
+            "report_kind",
+            "finding_identity",
+            name="uq_finding_release_status_decisions_release_identity",
+        ),
+        Index(
+            "ix_finding_release_status_decisions_scope_identity",
+            "project_id",
+            "release_scope_asset_id",
+            "scanner_kind",
+            "report_kind",
+            "finding_identity",
+        ),
+        Index(
+            "ix_finding_release_status_decisions_project_version",
+            "project_id",
+            "release_version_asset_id",
+        ),
+    )
+
+    id: Mapped[UUIDPrimaryKey]
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    release_scope_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("asset_nodes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    release_version_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("asset_nodes.id", ondelete="CASCADE"),
+        index=True,
+    )
+    release_version: Mapped[str] = mapped_column(String(120), index=True)
+    scanner_kind: Mapped[str] = mapped_column(String(50), index=True)
+    report_kind: Mapped[str] = mapped_column(String(120), index=True)
+    finding_identity: Mapped[str] = mapped_column(String(512), index=True)
+    status: Mapped[str] = mapped_column(String(50), index=True)
+    source_finding_id: Mapped[str] = mapped_column(
+        ForeignKey("raw_finding_instances.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_comment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("finding_comments.id", ondelete="SET NULL"),
+        index=True,
+    )
+    source_request_id: Mapped[str | None] = mapped_column(
+        ForeignKey("finding_status_change_requests.id", ondelete="SET NULL"),
+        index=True,
+    )
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    project: Mapped[Project] = relationship()
+    release_scope_asset: Mapped[AssetNode] = relationship(
+        foreign_keys=[release_scope_asset_id],
+    )
+    release_version_asset: Mapped[AssetNode] = relationship(
+        foreign_keys=[release_version_asset_id],
+    )
+    source_finding: Mapped[RawFindingInstance] = relationship()
+    source_comment: Mapped[FindingComment | None] = relationship()
+    source_request: Mapped[FindingStatusChangeRequest | None] = relationship()
