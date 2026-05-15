@@ -47,6 +47,16 @@ type MachineCredential struct {
 	UpdatedAt          time.Time
 }
 
+type MachineRefreshToken struct {
+	ID                  string
+	MachineCredentialID string
+	TokenDigest         string
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type MachineToken struct {
 	ID                  string
 	MachineCredentialID string

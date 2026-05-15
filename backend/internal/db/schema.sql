@@ -48,6 +48,17 @@ CREATE TABLE machine_tokens (
     FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
 );
 
+CREATE TABLE machine_refresh_tokens (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    machine_credential_id VARCHAR NOT NULL,
+    token_digest VARCHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
+);
+
 CREATE TABLE permission_assignments (
     id VARCHAR PRIMARY KEY NOT NULL,
     principal_type VARCHAR(20) NOT NULL,

@@ -205,6 +205,20 @@ func openMachineTestDB(t *testing.T) *sql.DB {
 	); err != nil {
 		t.Fatalf("create machine_tokens: %v", err)
 	}
+	if _, err := conn.ExecContext(
+		context.Background(),
+		`CREATE TABLE machine_refresh_tokens (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			machine_credential_id VARCHAR NOT NULL,
+			token_digest VARCHAR(64) NOT NULL,
+			expires_at DATETIME NOT NULL,
+			revoked_at DATETIME,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+	); err != nil {
+		t.Fatalf("create machine_refresh_tokens: %v", err)
+	}
 	return conn
 }
 
@@ -278,5 +292,20 @@ func insertMachineToken(t *testing.T, conn *sql.DB, fixture machineTokenFixture)
 		fixture.UpdatedAt,
 	); err != nil {
 		t.Fatalf("insert machine token: %v", err)
+	}
+}
+
+func assertMachineTokenCounts(t *testing.T, conn *sql.DB, wantAccess int, wantRefresh int) {
+	t.Helper()
+	var gotAccess int
+	if err := conn.QueryRowContext(context.Background(), "SELECT count(*) FROM machine_tokens").Scan(&gotAccess); err != nil {
+		t.Fatalf("count machine tokens: %v", err)
+	}
+	var gotRefresh int
+	if err := conn.QueryRowContext(context.Background(), "SELECT count(*) FROM machine_refresh_tokens").Scan(&gotRefresh); err != nil {
+		t.Fatalf("count machine refresh tokens: %v", err)
+	}
+	if gotAccess != wantAccess || gotRefresh != wantRefresh {
+		t.Fatalf("token counts = access %d refresh %d, want access %d refresh %d", gotAccess, gotRefresh, wantAccess, wantRefresh)
 	}
 }

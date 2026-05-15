@@ -7,7 +7,108 @@ package dbgen
 
 import (
 	"context"
+	"time"
 )
+
+const createMachineRefreshToken = `-- name: CreateMachineRefreshToken :one
+INSERT INTO machine_refresh_tokens (
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type CreateMachineRefreshTokenParams struct {
+	ID                  string
+	MachineCredentialID string
+	TokenDigest         string
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func (q *Queries) CreateMachineRefreshToken(ctx context.Context, arg CreateMachineRefreshTokenParams) (MachineRefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, createMachineRefreshToken,
+		arg.ID,
+		arg.MachineCredentialID,
+		arg.TokenDigest,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i MachineRefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.MachineCredentialID,
+		&i.TokenDigest,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createMachineToken = `-- name: CreateMachineToken :one
+INSERT INTO machine_tokens (
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    machine_credential_id,
+    token_digest,
+    expires_at,
+    revoked_at,
+    created_at,
+    updated_at
+`
+
+type CreateMachineTokenParams struct {
+	ID                  string
+	MachineCredentialID string
+	TokenDigest         string
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+func (q *Queries) CreateMachineToken(ctx context.Context, arg CreateMachineTokenParams) (MachineToken, error) {
+	row := q.db.QueryRowContext(ctx, createMachineToken,
+		arg.ID,
+		arg.MachineCredentialID,
+		arg.TokenDigest,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i MachineToken
+	err := row.Scan(
+		&i.ID,
+		&i.MachineCredentialID,
+		&i.TokenDigest,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getMachineCredential = `-- name: GetMachineCredential :one
 SELECT
@@ -25,6 +126,36 @@ WHERE id = ?
 
 func (q *Queries) GetMachineCredential(ctx context.Context, id string) (MachineCredential, error) {
 	row := q.db.QueryRowContext(ctx, getMachineCredential, id)
+	var i MachineCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ClientID,
+		&i.ClientSecretDigest,
+		&i.IsActive,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getMachineCredentialByClientID = `-- name: GetMachineCredentialByClientID :one
+SELECT
+    id,
+    name,
+    client_id,
+    client_secret_digest,
+    is_active,
+    revoked_at,
+    created_at,
+    updated_at
+FROM machine_credentials
+WHERE client_id = ?
+`
+
+func (q *Queries) GetMachineCredentialByClientID(ctx context.Context, clientID string) (MachineCredential, error) {
+	row := q.db.QueryRowContext(ctx, getMachineCredentialByClientID, clientID)
 	var i MachineCredential
 	err := row.Scan(
 		&i.ID,
