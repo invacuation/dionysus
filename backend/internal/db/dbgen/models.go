@@ -18,6 +18,24 @@ type AppSecuritySetting struct {
 	UpdatedAt                       time.Time
 }
 
+type AssetNode struct {
+	ID                  string
+	ProjectID           string
+	ParentID            sql.NullString
+	NodeType            string
+	Name                string
+	Path                string
+	TargetRef           sql.NullString
+	MetadataJson        string
+	SlaTrackingEnabled  sql.NullBool
+	SlaReportingEnabled sql.NullBool
+	GracePeriodEnabled  sql.NullBool
+	GracePeriodPercent  sql.NullInt64
+	SortOrder           int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type AuditLogEvent struct {
 	ID                 string
 	EventType          string
@@ -92,6 +110,25 @@ type PermissionAssignment struct {
 	ScopeID       sql.NullString
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type Project struct {
+	ID                                string
+	Slug                              string
+	Name                              string
+	Description                       sql.NullString
+	SlaTrackingEnabled                bool
+	SlaReportingEnabled               bool
+	GracePeriodEnabled                bool
+	GracePeriodPercent                int64
+	RequirePeerReviewForStatusChanges bool
+	CriticalSlaDays                   int64
+	HighSlaDays                       int64
+	MediumSlaDays                     int64
+	LowSlaDays                        int64
+	UnknownSlaDays                    int64
+	CreatedAt                         time.Time
+	UpdatedAt                         time.Time
 }
 
 type User struct {

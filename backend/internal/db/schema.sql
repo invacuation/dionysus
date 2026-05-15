@@ -86,6 +86,46 @@ CREATE TABLE permission_assignments (
     updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE projects (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    slug VARCHAR(150) NOT NULL UNIQUE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    sla_tracking_enabled BOOLEAN NOT NULL,
+    sla_reporting_enabled BOOLEAN NOT NULL,
+    grace_period_enabled BOOLEAN NOT NULL,
+    grace_period_percent INTEGER NOT NULL,
+    require_peer_review_for_status_changes BOOLEAN NOT NULL DEFAULT false,
+    critical_sla_days INTEGER NOT NULL DEFAULT 30,
+    high_sla_days INTEGER NOT NULL DEFAULT 60,
+    medium_sla_days INTEGER NOT NULL DEFAULT 90,
+    low_sla_days INTEGER NOT NULL DEFAULT 180,
+    unknown_sla_days INTEGER NOT NULL DEFAULT 365,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE asset_nodes (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    project_id VARCHAR NOT NULL,
+    parent_id VARCHAR,
+    node_type VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    path TEXT NOT NULL,
+    target_ref TEXT,
+    metadata_json TEXT NOT NULL,
+    sla_tracking_enabled BOOLEAN,
+    sla_reporting_enabled BOOLEAN,
+    grace_period_enabled BOOLEAN,
+    grace_period_percent INTEGER,
+    sort_order INTEGER NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
+    UNIQUE (project_id, path)
+);
+
 CREATE TABLE user_sessions (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,
