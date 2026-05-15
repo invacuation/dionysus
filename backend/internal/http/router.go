@@ -1,16 +1,35 @@
 package httpapi
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/invacuation/dionysus/backend/internal/config"
 )
 
-func NewRouter(settings config.Settings) http.Handler {
+type Dependencies struct {
+	DB *sql.DB
+}
+
+type Option func(*Dependencies)
+
+func WithDB(conn *sql.DB) Option {
+	return func(deps *Dependencies) {
+		deps.DB = conn
+	}
+}
+
+func NewRouter(settings config.Settings, options ...Option) http.Handler {
+	deps := Dependencies{}
+	for _, option := range options {
+		option(&deps)
+	}
+
 	router := chi.NewRouter()
 	router.Use(RequestBodyLimit(settings.MaxReportUploadBytes))
 	router.Get("/healthz", healthz)
+	mountOAuthRoutes(router, settings, deps)
 	mountFrontend(router, settings.FrontendDist)
 	return router
 }

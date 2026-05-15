@@ -7,6 +7,6 @@ import (
 	httpapi "github.com/invacuation/dionysus/backend/internal/http"
 )
 
-func New(settings config.Settings) http.Handler {
-	return httpapi.NewRouter(settings)
+func New(settings config.Settings, options ...httpapi.Option) http.Handler {
+	return httpapi.NewRouter(settings, options...)
 }
