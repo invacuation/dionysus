@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from dionysus.findings.release_inheritance import record_release_status_decision
 from dionysus.models.findings import (
     FindingComment,
     FindingStatus,
@@ -140,6 +141,14 @@ def change_finding_status(
         group = _matching_project_group(session, finding)
         if group is not None:
             group.status = target_status
+        record_release_status_decision(
+            session,
+            finding=finding,
+            status=target_status,
+            comment=activity_comment,
+            request=request,
+            decided_at=decision_time,
+        )
 
     return FindingStatusChangeResult(
         request=request,
@@ -188,6 +197,13 @@ def approve_finding_status_request(
     group = _matching_project_group(session, finding)
     if group is not None:
         group.status = FindingStatus(request.to_status)
+    record_release_status_decision(
+        session,
+        finding=finding,
+        status=FindingStatus(request.to_status),
+        request=request,
+        decided_at=request.decided_at,
+    )
 
     return request
 
