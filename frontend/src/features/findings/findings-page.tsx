@@ -42,6 +42,7 @@ import {
   type FindingComment,
   type FindingDetail,
   type FindingListParams,
+  type FindingRelatedOccurrence,
   type FindingRow,
   type FindingSortKey,
   type FindingStatus,
@@ -1283,6 +1284,7 @@ function DetailPanel({
     !statusMutation.isPending
   const commentActivity = buildCommentsActivity(detail.comments, detail.status_change_requests)
   const activity = buildActivity(detail.comments, detail.status_change_requests, detail)
+  const releaseSummary = buildReleaseOccurrenceSummary(detail)
 
   return (
     <CardContent className="space-y-5 p-5 text-sm">
@@ -1294,6 +1296,45 @@ function DetailPanel({
         <DetailTerm label="Vulnerability SLA" value={daysLabel(detail.sla_remaining_days)} />
         <DetailTerm label="Grace" value={daysLabel(detail.grace_remaining_days)} />
       </dl>
+
+      {releaseSummary ? (
+        <DetailSection title="Release">
+          <dl className="grid grid-cols-2 gap-3 rounded-md border bg-muted/40 p-3">
+            {releaseSummary.terms.map((term) => (
+              <DetailTerm key={term.label} label={term.label} value={term.value} />
+            ))}
+          </dl>
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold text-muted-foreground">Related occurrences</h4>
+            {releaseSummary.occurrences.length === 0 ? (
+              <p className="rounded-md border bg-muted/30 p-3 text-muted-foreground">
+                No related occurrences.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {releaseSummary.occurrences.map((occurrence) => (
+                  <li className="rounded-md border bg-muted/30 p-3" key={occurrence.id}>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-medium">{occurrence.releaseVersion}</span>
+                      <Badge variant="outline">{occurrence.status}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {occurrence.latestPresence}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-words text-xs text-muted-foreground">
+                      {occurrence.scanTargetPath}
+                    </p>
+                    <dl className="mt-2 grid grid-cols-2 gap-3">
+                      <DetailTerm label="Installed" value={occurrence.installedVersion} />
+                      <DetailTerm label="Fixed" value={occurrence.fixedVersion} />
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DetailSection>
+      ) : null}
 
       <DetailSection title="Evidence">
         <div className="space-y-2 rounded-md border bg-muted/40 p-3">
@@ -1653,6 +1694,50 @@ export function descriptionForFindingDetail(detail: FindingDetail): string | nul
     return sourceTitle.trim()
   }
   return null
+}
+
+type ReleaseOccurrenceSummary = {
+  terms: Array<{ label: string; value: string }>
+  occurrences: ReleaseOccurrenceRow[]
+}
+
+type ReleaseOccurrenceRow = {
+  id: string
+  releaseVersion: string
+  scanTargetPath: string
+  status: string
+  latestPresence: string
+  installedVersion: string
+  fixedVersion: string
+}
+
+export function buildReleaseOccurrenceSummary(
+  detail: Pick<FindingDetail, "release_context" | "related_occurrences">,
+): ReleaseOccurrenceSummary | null {
+  if (!detail.release_context) {
+    return null
+  }
+  return {
+    terms: [
+      { label: "Release line", value: detail.release_context.scope_path },
+      { label: "Release version", value: detail.release_context.version },
+    ],
+    occurrences: detail.related_occurrences.map(releaseOccurrenceRow),
+  }
+}
+
+function releaseOccurrenceRow(occurrence: FindingRelatedOccurrence): ReleaseOccurrenceRow {
+  return {
+    id: occurrence.finding_id,
+    releaseVersion: occurrence.release_version,
+    scanTargetPath: occurrence.scan_target_path,
+    status: formatStatus(occurrence.status),
+    latestPresence: occurrence.present_in_latest_scan
+      ? "Present in latest scan"
+      : "Absent from latest scan",
+    installedVersion: emptyFallback(occurrence.installed_version),
+    fixedVersion: emptyFallback(occurrence.fixed_version),
+  }
 }
 
 function StatusRequestReviewForm({

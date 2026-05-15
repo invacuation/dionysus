@@ -587,10 +587,7 @@ def test_findings_api_detail_includes_release_related_occurrences(engine: Engine
                 scan_target=targets["40.0.3"],
                 scanner_kind=ScannerKind.TRIVY,
                 scanner_finding_id="CVE-2026-1001:openssl:sbom",
-                dedupe_key=(
-                    f"{targets['40.0.3'].id}|trivy|trivy-sbom-json|"
-                    "CVE-2026-1001|openssl"
-                ),
+                dedupe_key=(f"{targets['40.0.3'].id}|trivy|trivy-sbom-json|CVE-2026-1001|openssl"),
                 identifiers_json=["CVE-2026-1001"],
                 primary_identifier="CVE-2026-1001",
                 severity="CRITICAL",
@@ -662,16 +659,11 @@ def test_findings_api_detail_includes_release_related_occurrences(engine: Engine
         findings_by_version["40.0.2"].id,
         finding_id,
     }
-    assert excluded_finding_id not in {
-        item["finding_id"] for item in body["related_occurrences"]
-    }
-    assert outside_finding_id not in {
-        item["finding_id"] for item in body["related_occurrences"]
-    }
+    assert excluded_finding_id not in {item["finding_id"] for item in body["related_occurrences"]}
+    assert outside_finding_id not in {item["finding_id"] for item in body["related_occurrences"]}
     assert all(item["project_name"] == "Alpha" for item in body["related_occurrences"])
     assert all(
-        item["scan_target_name"].startswith("api-image-")
-        for item in body["related_occurrences"]
+        item["scan_target_name"].startswith("api-image-") for item in body["related_occurrences"]
     )
     assert all(item["present_in_latest_scan"] is True for item in body["related_occurrences"])
     assert all(item["installed_version"] == "3.0.11-1" for item in body["related_occurrences"])

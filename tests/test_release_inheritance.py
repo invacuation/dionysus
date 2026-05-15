@@ -108,7 +108,9 @@ def _finding(
         scan_target=target,
         scanner_kind=scanner_kind,
         scanner_finding_id=f"{primary_identifier}:{package_name or ''}:3.0.0",
-        dedupe_key=f"{target.id}|{scanner_kind}|{report_kind}|{primary_identifier}|{package_name or ''}",
+        dedupe_key=(
+            f"{target.id}|{scanner_kind}|{report_kind}|{primary_identifier}|{package_name or ''}"
+        ),
         identifiers_json=[primary_identifier],
         primary_identifier=primary_identifier,
         severity="HIGH",
@@ -265,7 +267,7 @@ def test_release_context_returns_none_when_scope_child_is_not_folder(
 def test_release_context_returns_none_for_malformed_metadata_on_ancestor(
     db_session: Session,
 ) -> None:
-    project, scope, version, target = _release_tree(db_session)
+    project, _scope, version, target = _release_tree(db_session)
     intermediate = AssetNode(
         project=project,
         parent=version,

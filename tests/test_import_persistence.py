@@ -386,7 +386,7 @@ def test_import_release_inheritance_requires_matching_report_kind(
 def test_import_outside_release_scope_does_not_inherit_release_decision(
     db_session: Session,
 ) -> None:
-    project, scope, _version_4001, target_4001 = _release_tree(
+    project, _scope, _version_4001, target_4001 = _release_tree(
         db_session,
         release_version="40.0.1",
         version_name="40.0.1",

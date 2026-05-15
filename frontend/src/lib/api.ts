@@ -349,6 +349,25 @@ export type FindingStatusChangeRequest = {
   decided_at: string | null
 }
 
+export type FindingReleaseContext = {
+  scope_asset_id: string
+  scope_path: string
+  version_asset_id: string
+  version: string
+}
+
+export type FindingRelatedOccurrence = {
+  finding_id: string
+  release_version: string
+  project_name: string
+  scan_target_name: string
+  scan_target_path: string
+  status: FindingStatus
+  present_in_latest_scan: boolean
+  installed_version: string | null
+  fixed_version: string | null
+}
+
 export type FindingDetail = FindingRow & {
   scanner_finding_id: string
   dedupe_key: string
@@ -360,6 +379,8 @@ export type FindingDetail = FindingRow & {
   artifact_path: string | null
   source_evidence: Record<string, unknown>
   project_group: ProjectGroup | null
+  release_context: FindingReleaseContext | null
+  related_occurrences: FindingRelatedOccurrence[]
   comments: FindingComment[]
   status_change_requests: FindingStatusChangeRequest[]
 }

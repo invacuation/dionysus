@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildReleaseOccurrenceSummary,
   buildActivity,
   buildCommentsActivity,
   descriptionForFindingDetail,
@@ -76,6 +77,70 @@ describe("descriptionForFindingDetail", () => {
         },
       } as FindingDetail),
     ).toBe("Hydrated vulnerability description.")
+  })
+})
+
+describe("buildReleaseOccurrenceSummary", () => {
+  test("derives release context labels and values for release-scoped details", () => {
+    expect(
+      buildReleaseOccurrenceSummary({
+        release_context: {
+          scope_asset_id: "scope-1",
+          scope_path: "releases/V40",
+          version_asset_id: "version-1",
+          version: "40.0.3",
+        },
+        related_occurrences: [],
+      } as FindingDetail)?.terms,
+    ).toEqual([
+      { label: "Release line", value: "releases/V40" },
+      { label: "Release version", value: "40.0.3" },
+    ])
+  })
+
+  test("formats related occurrence rows with compact finding state", () => {
+    expect(
+      buildReleaseOccurrenceSummary({
+        release_context: {
+          scope_asset_id: "scope-1",
+          scope_path: "releases/V40",
+          version_asset_id: "version-3",
+          version: "40.0.3",
+        },
+        related_occurrences: [
+          {
+            finding_id: "finding-1",
+            release_version: "40.0.1",
+            project_name: "Alpha",
+            scan_target_name: "api-image-40.0.1",
+            scan_target_path: "releases/V40/40.0.1/images/api",
+            status: "accepted_risk",
+            present_in_latest_scan: false,
+            installed_version: "3.0.11-1",
+            fixed_version: "3.0.13-1",
+          },
+        ],
+      } as FindingDetail)?.occurrences,
+    ).toEqual([
+      {
+        id: "finding-1",
+        releaseVersion: "40.0.1",
+        scanTargetPath: "releases/V40/40.0.1/images/api",
+        status: "Accepted Risk",
+        latestPresence: "Absent from latest scan",
+        installedVersion: "3.0.11-1",
+        fixedVersion: "3.0.13-1",
+      },
+    ])
+  })
+
+  test("returns no release occurrence view model for non-release details", () => {
+    expect(
+      buildReleaseOccurrenceSummary({
+        release_context: null,
+        related_occurrences: [],
+      } as FindingDetail),
+    ).toBeNull()
   })
 })
 
