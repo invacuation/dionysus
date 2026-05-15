@@ -32,6 +32,7 @@ func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	mountAuthRoutes(router, settings, deps)
 	mountAccessRoutes(router, settings, deps)
 	mountMachineCredentialRoutes(router, settings, deps)
+	mountSecuritySettingsRoutes(router, settings, deps)
 	mountOAuthRoutes(router, settings, deps)
 	mountFrontend(router, settings.FrontendDist)
 	return router
