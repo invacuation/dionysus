@@ -5,9 +5,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from dionysus.findings.release_inheritance import record_release_status_decision
 from dionysus.imports.parsers import ParsedFinding, ParsedReport, ParserError
 from dionysus.imports.persistence import ImportFailure, import_trivy_report, persist_parsed_report
 from dionysus.models.findings import (
+    FindingComment,
+    FindingStatus,
     ImportAttempt,
     ImportStatus,
     ProjectVulnerabilityGroup,
@@ -31,6 +34,68 @@ def _project_and_target(session: Session) -> tuple[Project, AssetNode]:
     session.add_all([project, target])
     session.flush()
     return project, target
+
+
+def _release_tree(
+    session: Session,
+    *,
+    release_version: str,
+    version_name: str,
+    project: Project | None = None,
+    scope: AssetNode | None = None,
+) -> tuple[Project, AssetNode, AssetNode, AssetNode]:
+    if project is None:
+        project = Project(slug="alpha", name="Alpha")
+        session.add(project)
+    if scope is None:
+        scope = AssetNode(
+            project=project,
+            node_type=AssetNodeType.FOLDER,
+            name="releases",
+            path="releases",
+            metadata_json={"release_inheritance_scope": True},
+        )
+        session.add(scope)
+
+    version = AssetNode(
+        project=project,
+        parent=scope,
+        node_type=AssetNodeType.FOLDER,
+        name=version_name,
+        path=f"{scope.path}/{version_name}",
+        metadata_json={"release_version": release_version},
+    )
+    target = AssetNode(
+        project=project,
+        parent=version,
+        node_type=AssetNodeType.SCAN_TARGET,
+        name="api-image",
+        path=f"{version.path}/images/api",
+        target_ref=f"registry.example.test/dionysus/api:{release_version}",
+    )
+    session.add_all([version, target])
+    session.flush()
+    return project, scope, version, target
+
+
+def _matching_report(*, report_kind: str = "trivy-image-json") -> ParsedReport:
+    return ParsedReport(
+        scanner="trivy",
+        report_kind=report_kind,
+        parser_version="1.0",
+        target="registry.example.test/dionysus/api:release",
+        findings=[
+            ParsedFinding(
+                scanner="trivy",
+                scanner_finding_id="CVE-2026-7777:openssl",
+                primary_identifier="CVE-2026-7777",
+                identifiers=["CVE-2026-7777"],
+                severity="HIGH",
+                package_name="openssl",
+                dedupe_key="trivy|CVE-2026-7777|pkg:openssl",
+            )
+        ],
+    )
 
 
 def _successful_import(
@@ -215,6 +280,284 @@ def test_import_enriches_cve_finding_references_before_persistence(
     assert result.raw_findings[0].references_json == [
         "https://nvd.nist.gov/vuln/detail/CVE-2026-1001"
     ]
+
+
+def test_import_in_release_scope_inherits_prior_non_open_decision_and_records_system_comment(
+    db_session: Session,
+) -> None:
+    project, scope, _version_4001, target_4001 = _release_tree(
+        db_session,
+        release_version="40.0.1",
+        version_name="40.0.1",
+    )
+    _project, _scope, _version_4002, target_4002 = _release_tree(
+        db_session,
+        project=project,
+        scope=scope,
+        release_version="40.0.2",
+        version_name="40.0.2",
+    )
+    first = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4001,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+    )
+    source_finding = first.raw_findings[0]
+    source_finding.status = FindingStatus.MITIGATED
+    record_release_status_decision(
+        db_session,
+        finding=source_finding,
+        status=FindingStatus.MITIGATED,
+        decided_at=datetime(2026, 5, 7, 13, 0, tzinfo=UTC),
+    )
+
+    second = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4002,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+    )
+
+    inherited = second.raw_findings[0]
+    assert inherited.status == FindingStatus.MITIGATED
+    assert second.groups[0].status == FindingStatus.MITIGATED
+    comments = db_session.scalars(
+        select(FindingComment).where(FindingComment.finding == inherited)
+    ).all()
+    assert len(comments) == 1
+    assert comments[0].project is project
+    assert comments[0].author_principal_type == "machine"
+    assert comments[0].author_principal_id == "system"
+    assert comments[0].is_system is True
+    assert comments[0].status_from == FindingStatus.OPEN
+    assert comments[0].status_to == FindingStatus.MITIGATED
+    assert comments[0].body == "Inherited mitigated from releases/40.0.1."
+
+
+def test_import_release_inheritance_requires_matching_report_kind(
+    db_session: Session,
+) -> None:
+    project, scope, _version_4001, target_4001 = _release_tree(
+        db_session,
+        release_version="40.0.1",
+        version_name="40.0.1",
+    )
+    _project, _scope, _version_4002, target_4002 = _release_tree(
+        db_session,
+        project=project,
+        scope=scope,
+        release_version="40.0.2",
+        version_name="40.0.2",
+    )
+    first = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4001,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+    )
+    record_release_status_decision(
+        db_session,
+        finding=first.raw_findings[0],
+        status=FindingStatus.ACCEPTED_RISK,
+        decided_at=datetime(2026, 5, 7, 13, 0, tzinfo=UTC),
+    )
+
+    second = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4002,
+        parsed_report=_matching_report(report_kind="trivy-sbom-json"),
+        now=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+    )
+
+    assert second.raw_findings[0].status == FindingStatus.OPEN
+    assert (
+        db_session.scalars(
+            select(FindingComment).where(FindingComment.finding == second.raw_findings[0])
+        ).all()
+        == []
+    )
+
+
+def test_import_outside_release_scope_does_not_inherit_release_decision(
+    db_session: Session,
+) -> None:
+    project, scope, _version_4001, target_4001 = _release_tree(
+        db_session,
+        release_version="40.0.1",
+        version_name="40.0.1",
+    )
+    standalone_target = AssetNode(
+        project=project,
+        node_type=AssetNodeType.SCAN_TARGET,
+        name="standalone-api",
+        path="images/standalone-api",
+        target_ref="registry.example.test/dionysus/api:standalone",
+    )
+    db_session.add(standalone_target)
+    db_session.flush()
+    first = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4001,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+    )
+    record_release_status_decision(
+        db_session,
+        finding=first.raw_findings[0],
+        status=FindingStatus.ACCEPTED_RISK,
+        decided_at=datetime(2026, 5, 7, 13, 0, tzinfo=UTC),
+    )
+
+    result = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=standalone_target,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+    )
+
+    assert result.raw_findings[0].status == FindingStatus.OPEN
+    assert (
+        db_session.scalars(
+            select(FindingComment).where(FindingComment.finding == result.raw_findings[0])
+        ).all()
+        == []
+    )
+
+
+def test_import_release_inheritance_does_not_overwrite_existing_non_open_finding(
+    db_session: Session,
+) -> None:
+    project, scope, _version_4001, target_4001 = _release_tree(
+        db_session,
+        release_version="40.0.1",
+        version_name="40.0.1",
+    )
+    _project, _scope, _version_4002, target_4002 = _release_tree(
+        db_session,
+        project=project,
+        scope=scope,
+        release_version="40.0.2",
+        version_name="40.0.2",
+    )
+    first = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4001,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+    )
+    record_release_status_decision(
+        db_session,
+        finding=first.raw_findings[0],
+        status=FindingStatus.ACCEPTED_RISK,
+        decided_at=datetime(2026, 5, 7, 13, 0, tzinfo=UTC),
+    )
+    second = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4002,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+    )
+    second.raw_findings[0].status = FindingStatus.FIXED
+    inherited_comment_count = len(
+        db_session.scalars(
+            select(FindingComment).where(FindingComment.finding == second.raw_findings[0])
+        ).all()
+    )
+
+    reimport = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4002,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 8, 14, 0, tzinfo=UTC),
+    )
+
+    assert reimport.raw_findings[0].status == FindingStatus.FIXED
+    assert (
+        len(
+            db_session.scalars(
+                select(FindingComment).where(FindingComment.finding == reimport.raw_findings[0])
+            ).all()
+        )
+        == inherited_comment_count
+    )
+
+
+def test_import_release_inheritance_open_decision_clears_older_non_open_decision(
+    db_session: Session,
+) -> None:
+    project, scope, _version_4001, target_4001 = _release_tree(
+        db_session,
+        release_version="40.0.1",
+        version_name="40.0.1",
+    )
+    _project, _scope, _version_4002, target_4002 = _release_tree(
+        db_session,
+        project=project,
+        scope=scope,
+        release_version="40.0.2",
+        version_name="40.0.2",
+    )
+    _project, _scope, _version_4003, target_4003 = _release_tree(
+        db_session,
+        project=project,
+        scope=scope,
+        release_version="40.0.3",
+        version_name="40.0.3",
+    )
+    first = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4001,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 7, 12, 0, tzinfo=UTC),
+    )
+    record_release_status_decision(
+        db_session,
+        finding=first.raw_findings[0],
+        status=FindingStatus.ACCEPTED_RISK,
+        decided_at=datetime(2026, 5, 7, 13, 0, tzinfo=UTC),
+    )
+    second = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4002,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+    )
+    second.raw_findings[0].status = FindingStatus.OPEN
+    record_release_status_decision(
+        db_session,
+        finding=second.raw_findings[0],
+        status=FindingStatus.OPEN,
+        decided_at=datetime(2026, 5, 8, 13, 0, tzinfo=UTC),
+    )
+
+    third = persist_parsed_report(
+        db_session,
+        project=project,
+        scan_target=target_4003,
+        parsed_report=_matching_report(),
+        now=datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
+    )
+
+    assert third.raw_findings[0].status == FindingStatus.OPEN
+    assert third.groups[0].status == FindingStatus.OPEN
+    assert (
+        db_session.scalars(
+            select(FindingComment).where(FindingComment.finding == third.raw_findings[0])
+        ).all()
+        == []
+    )
 
 
 def test_import_does_not_duplicate_existing_nvd_reference(

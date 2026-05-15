@@ -11,10 +11,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from dionysus.findings.enrichment import enrich_parsed_finding_with_cve_references
+from dionysus.findings.release_inheritance import (
+    ReleaseContext,
+    finding_inheritance_identity,
+    latest_applicable_decision,
+    release_context_for_scan_target,
+)
 from dionysus.imports.parsers import ParsedFinding, ParsedReport, ParserError
 from dionysus.imports.trivy import SCANNER, parse_trivy_image_json
 from dionysus.inventory.assets import create_or_reuse_scan_target
 from dionysus.models.findings import (
+    FindingComment,
     FindingStatus,
     ImportAttempt,
     ImportStatus,
@@ -207,6 +214,7 @@ def persist_parsed_report(
             )
             session.add_all([attempt, scan])
             session.flush()
+            release_context = release_context_for_scan_target(session, scan_target)
 
             raw_findings: list[RawFindingInstance] = []
             groups_by_dedupe_key: dict[str, ProjectVulnerabilityGroup] = {}
@@ -224,6 +232,13 @@ def persist_parsed_report(
                     finding=finding,
                     now=now,
                 )
+                release_decision_status = _apply_release_inheritance(
+                    session,
+                    project=project,
+                    release_context=release_context,
+                    scan=scan,
+                    raw_finding=raw_finding,
+                )
                 group = _upsert_group(
                     session,
                     project=project,
@@ -231,6 +246,8 @@ def persist_parsed_report(
                     first_detected_at=raw_finding.first_seen_at,
                     group_cache=group_cache,
                 )
+                if release_decision_status is not None:
+                    group.status = release_decision_status
                 raw_findings.append(raw_finding)
                 groups_by_dedupe_key.setdefault(group.dedupe_key, group)
 
@@ -625,6 +642,56 @@ def _upsert_raw_finding(
     existing.references_json = finding.references
     existing.source_json = finding.source
     return existing
+
+
+def _apply_release_inheritance(
+    session: Session,
+    *,
+    project: Project,
+    release_context: ReleaseContext | None,
+    scan: Scan,
+    raw_finding: RawFindingInstance,
+) -> FindingStatus | None:
+    if release_context is None:
+        return None
+    if FindingStatus(raw_finding.status) != FindingStatus.OPEN:
+        return None
+
+    decision = latest_applicable_decision(
+        session,
+        project_id=project.id,
+        context=release_context,
+        scanner_kind=raw_finding.scanner_kind,
+        report_kind=scan.report_kind,
+        finding_identity=finding_inheritance_identity(
+            raw_finding.primary_identifier,
+            raw_finding.package_name,
+        ),
+    )
+    if decision is None:
+        return None
+
+    decision_status = FindingStatus(decision.status)
+    if decision_status == FindingStatus.OPEN:
+        return decision_status
+
+    raw_finding.status = decision_status
+    session.add(
+        FindingComment(
+            project=project,
+            finding=raw_finding,
+            author_principal_type="machine",
+            author_principal_id="system",
+            is_system=True,
+            status_from=FindingStatus.OPEN,
+            status_to=decision_status,
+            body=(
+                f"Inherited {decision_status.value} from "
+                f"{decision.release_scope_asset.path}/{decision.release_version}."
+            ),
+        )
+    )
+    return decision_status
 
 
 def _mark_absent_raw_findings_not_present(
