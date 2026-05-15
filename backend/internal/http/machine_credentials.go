@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
@@ -92,7 +93,8 @@ func listMachineCredentials(w http.ResponseWriter, r *http.Request, settings con
 }
 
 func createMachineCredential(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission})
+	if !ok {
 		return
 	}
 	var payload machineCredentialCreateRequest
@@ -109,6 +111,15 @@ func createMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "machine_credential.create",
+		TargetType: stringPtr("machine_credential"),
+		TargetID:   stringPtr(credential.ID),
+		Metadata:   map[string]any{"name": credential.Name},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusCreated, machineCredentialWithSecretResponse{
 		machineCredentialResponse: machineCredentialResponseFromDB(credential),
 		ClientSecret:              rawSecret,
@@ -116,7 +127,8 @@ func createMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 }
 
 func regenerateMachineCredentialSecret(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission})
+	if !ok {
 		return
 	}
 	revokeTokens, ok := tokenActionRevokeTokens(w, r)
@@ -138,6 +150,18 @@ func regenerateMachineCredentialSecret(w http.ResponseWriter, r *http.Request, s
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "machine_credential.regenerate_secret",
+		TargetType: stringPtr("machine_credential"),
+		TargetID:   stringPtr(credential.ID),
+		Metadata: map[string]any{
+			"name":          credential.Name,
+			"revoke_tokens": revokeTokens,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusOK, machineCredentialWithSecretResponse{
 		machineCredentialResponse: machineCredentialResponseFromDB(credential),
 		ClientSecret:              rawSecret,
@@ -145,7 +169,8 @@ func regenerateMachineCredentialSecret(w http.ResponseWriter, r *http.Request, s
 }
 
 func revokeMachineCredential(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: credentialManagePermission})
+	if !ok {
 		return
 	}
 	revokeTokens, ok := tokenActionRevokeTokens(w, r)
@@ -164,6 +189,18 @@ func revokeMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 			writeError(w, http.StatusNotFound, "Machine credential not found")
 			return
 		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "machine_credential.revoke",
+		TargetType: stringPtr("machine_credential"),
+		TargetID:   stringPtr(credential.ID),
+		Metadata: map[string]any{
+			"name":          credential.Name,
+			"revoke_tokens": revokeTokens,
+		},
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}

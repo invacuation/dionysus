@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
@@ -39,7 +40,8 @@ func getSecuritySettings(w http.ResponseWriter, r *http.Request, settings config
 }
 
 func updateSecuritySettings(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "security_settings:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "security_settings:manage"})
+	if !ok {
 		return
 	}
 	var payload securitySettingsResponse
@@ -62,6 +64,19 @@ func updateSecuritySettings(w http.ResponseWriter, r *http.Request, settings con
 		time.Now().UTC(),
 	)
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "security.settings.update",
+		TargetType: stringPtr("app_security_settings"),
+		TargetID:   stringPtr(row.ID),
+		Metadata: map[string]any{
+			"force_peer_review_for_status_changes": payload.ForcePeerReviewForStatusChanges,
+			"session_idle_timeout_minutes":         payload.SessionIdleTimeoutMinutes,
+			"session_absolute_timeout_minutes":     payload.SessionAbsoluteTimeoutMinutes,
+		},
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}

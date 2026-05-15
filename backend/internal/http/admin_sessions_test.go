@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,6 +124,17 @@ func TestAdminSessionsRevokeStampsRevokedAt(t *testing.T) {
 	}
 	if !revokedAt.Valid {
 		t.Fatal("stored revoked_at is NULL")
+	}
+	var eventType string
+	var metadataJSON string
+	if err := conn.QueryRowContext(t.Context(), "SELECT event_type, metadata_json FROM audit_log_events WHERE target_id = ?", targetSessionID).Scan(&eventType, &metadataJSON); err != nil {
+		t.Fatalf("select audit event: %v", err)
+	}
+	if eventType != "auth.session.revoke" {
+		t.Fatalf("event_type = %q, want auth.session.revoke", eventType)
+	}
+	if !strings.Contains(metadataJSON, `"revoked_username":"alice"`) {
+		t.Fatalf("metadata_json = %s", metadataJSON)
 	}
 }
 

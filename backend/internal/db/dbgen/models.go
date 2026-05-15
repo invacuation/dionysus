@@ -18,6 +18,21 @@ type AppSecuritySetting struct {
 	UpdatedAt                       time.Time
 }
 
+type AuditLogEvent struct {
+	ID                 string
+	EventType          string
+	ActorPrincipalType sql.NullString
+	ActorPrincipalID   sql.NullString
+	ActorDisplay       sql.NullString
+	TargetType         sql.NullString
+	TargetID           sql.NullString
+	ProjectID          sql.NullString
+	IpAddress          sql.NullString
+	UserAgent          sql.NullString
+	MetadataJson       string
+	CreatedAt          time.Time
+}
+
 type Group struct {
 	ID          string
 	Name        string

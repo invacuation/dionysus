@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
@@ -185,7 +186,8 @@ func listAccessManagement(w http.ResponseWriter, r *http.Request, settings confi
 }
 
 func createAccessGroup(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"})
+	if !ok {
 		return
 	}
 	var payload accessGroupCreateRequest
@@ -218,11 +220,25 @@ func createAccessGroup(w http.ResponseWriter, r *http.Request, settings config.S
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "access.group.create",
+		TargetType: stringPtr("group"),
+		TargetID:   stringPtr(group.ID),
+		Metadata: map[string]any{
+			"name":         group.Name,
+			"display_name": group.DisplayName,
+			"is_protected": group.IsProtected,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusCreated, accessGroupFromDB(group))
 }
 
 func createAccessMembership(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"})
+	if !ok {
 		return
 	}
 	var payload accessMembershipCreateRequest
@@ -268,11 +284,25 @@ func createAccessMembership(w http.ResponseWriter, r *http.Request, settings con
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "access.membership.add",
+		TargetType: stringPtr("group_membership"),
+		TargetID:   stringPtr(membership.ID),
+		Metadata: map[string]any{
+			"group_id":       membership.GroupID,
+			"principal_type": membership.PrincipalType,
+			"principal_id":   membership.PrincipalID,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusCreated, accessMembershipFromDB(membership))
 }
 
 func assignAccessPermission(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"})
+	if !ok {
 		return
 	}
 	var payload accessPermissionAssignRequest
@@ -323,11 +353,28 @@ func assignAccessPermission(w http.ResponseWriter, r *http.Request, settings con
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "access.permission.assign",
+		TargetType: stringPtr("permission_assignment"),
+		TargetID:   stringPtr(assignment.ID),
+		Metadata: map[string]any{
+			"principal_type": assignment.PrincipalType,
+			"principal_id":   assignment.PrincipalID,
+			"permission":     assignment.Permission,
+			"effect":         assignment.Effect,
+			"scope_type":     optionalStringFromNull(assignment.ScopeType),
+			"scope_id":       optionalStringFromNull(assignment.ScopeID),
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusCreated, accessPermissionAssignmentFromDB(assignment))
 }
 
 func createAccessUser(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"})
+	if !ok {
 		return
 	}
 	if !settings.LocalAuthEnabled {
@@ -348,11 +395,24 @@ func createAccessUser(w http.ResponseWriter, r *http.Request, settings config.Se
 		writeError(w, http.StatusUnprocessableEntity, "Invalid user account request")
 		return
 	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "access.user.create",
+		TargetType: stringPtr("user"),
+		TargetID:   stringPtr(user.ID),
+		Metadata: map[string]any{
+			"username":     user.Username,
+			"display_name": user.DisplayName,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	writeJSON(w, http.StatusCreated, accessUserFromDB(user))
 }
 
 func setAccessUserPassword(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"})
+	if !ok {
 		return
 	}
 	if !settings.LocalAuthEnabled {
@@ -366,7 +426,8 @@ func setAccessUserPassword(w http.ResponseWriter, r *http.Request, settings conf
 	}
 	queries := dbgen.New(deps.DB)
 	userID := chi.URLParam(r, "userID")
-	if _, err := queries.GetUser(r.Context(), userID); errors.Is(err, sql.ErrNoRows) {
+	user, err := queries.GetUser(r.Context(), userID)
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "User not found")
 		return
 	} else if err != nil {
@@ -375,6 +436,15 @@ func setAccessUserPassword(w http.ResponseWriter, r *http.Request, settings conf
 	}
 	if err := identity.SetUserPassword(r.Context(), deps.DB, userID, payload.NewPassword, time.Now().UTC()); err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "Invalid new password")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "access.user.password.set",
+		TargetType: stringPtr("user"),
+		TargetID:   stringPtr(user.ID),
+		Metadata:   map[string]any{"username": user.Username},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

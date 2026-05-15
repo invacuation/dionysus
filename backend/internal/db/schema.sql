@@ -7,6 +7,21 @@ CREATE TABLE app_security_settings (
     updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE audit_log_events (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    event_type VARCHAR(120) NOT NULL,
+    actor_principal_type VARCHAR(50),
+    actor_principal_id VARCHAR(36),
+    actor_display VARCHAR(255),
+    target_type VARCHAR(120),
+    target_id VARCHAR(255),
+    project_id VARCHAR(36),
+    ip_address VARCHAR(120),
+    user_agent TEXT,
+    metadata_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL
+);
+
 CREATE TABLE groups (
     id VARCHAR PRIMARY KEY NOT NULL,
     name VARCHAR(150) NOT NULL,

@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
+	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
 )
 
@@ -72,6 +74,15 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 		return
 	}
 	if user == nil {
+		if _, err := auditlog.RecordEvent(r.Context(), deps.DB, auditlog.Event{
+			Type:      "auth.login.failure",
+			IPAddress: clientHost(r),
+			UserAgent: optionalHeader(r, "User-Agent"),
+			Metadata:  map[string]any{"username": credentials.Username},
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
@@ -87,6 +98,20 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 		nil,
 	)
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if _, err := auditlog.RecordEvent(r.Context(), deps.DB, auditlog.Event{
+		Type:               "auth.login.success",
+		ActorPrincipalType: stringPtr(identity.PrincipalTypeUser),
+		ActorPrincipalID:   stringPtr(user.ID),
+		ActorDisplay:       stringPtr(user.DisplayName),
+		TargetType:         stringPtr("session"),
+		TargetID:           stringPtr(session.ID),
+		IPAddress:          clientHost(r),
+		UserAgent:          optionalHeader(r, "User-Agent"),
+		Metadata:           map[string]any{"username": credentials.Username},
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
@@ -131,6 +156,24 @@ func deleteBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 		}
 		if session != nil {
 			if err := identity.RevokeSession(r.Context(), deps.DB, *session, time.Now().UTC()); err != nil {
+				writeError(w, http.StatusInternalServerError, "Internal Server Error")
+				return
+			}
+			user, _ := dbgen.New(deps.DB).GetUser(r.Context(), session.UserID)
+			actorDisplay := ""
+			if user.DisplayName != "" {
+				actorDisplay = user.DisplayName
+			}
+			if _, err := auditlog.RecordEvent(r.Context(), deps.DB, auditlog.Event{
+				Type:               "auth.logout",
+				ActorPrincipalType: stringPtr(identity.PrincipalTypeUser),
+				ActorPrincipalID:   stringPtr(session.UserID),
+				ActorDisplay:       stringPtr(actorDisplay),
+				TargetType:         stringPtr("session"),
+				TargetID:           stringPtr(session.ID),
+				IPAddress:          clientHost(r),
+				UserAgent:          optionalHeader(r, "User-Agent"),
+			}); err != nil {
 				writeError(w, http.StatusInternalServerError, "Internal Server Error")
 				return
 			}
@@ -224,6 +267,14 @@ func changeCurrentUserPassword(w http.ResponseWriter, r *http.Request, settings 
 			writeError(w, http.StatusBadRequest, "Current password is incorrect")
 			return
 		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "auth.password.change",
+		TargetType: stringPtr("user"),
+		TargetID:   stringPtr(actor.ActorID),
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}

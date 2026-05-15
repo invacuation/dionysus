@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	auditlog "github.com/invacuation/dionysus/backend/internal/audit"
 	"github.com/invacuation/dionysus/backend/internal/config"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/identity"
@@ -58,7 +59,8 @@ func listAdminSessions(w http.ResponseWriter, r *http.Request, settings config.S
 }
 
 func revokeAdminSession(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
-	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "session:manage"}); !ok {
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "session:manage"})
+	if !ok {
 		return
 	}
 	sessionID := chi.URLParam(r, "sessionID")
@@ -81,6 +83,19 @@ func revokeAdminSession(w http.ResponseWriter, r *http.Request, settings config.
 		return
 	}
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "auth.session.revoke",
+		TargetType: stringPtr("session"),
+		TargetID:   stringPtr(row.ID),
+		Metadata: map[string]any{
+			"revoked_user_id":      row.UserID,
+			"revoked_username":     row.Username,
+			"revoked_display_name": row.DisplayName,
+		},
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
