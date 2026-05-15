@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/invacuation/dionysus/backend/internal/db/dbgen"
 	"github.com/invacuation/dionysus/backend/internal/security"
 )
@@ -57,3 +59,48 @@ func ChangeUserPassword(ctx context.Context, conn *sql.DB, userID string, curren
 }
 
 var ErrCurrentPasswordIncorrect = errors.New("current password is incorrect")
+
+func CreateUser(ctx context.Context, conn *sql.DB, username string, displayName string, password string, now time.Time) (dbgen.User, error) {
+	passwordHash, err := security.HashPassword(password)
+	if err != nil {
+		return dbgen.User{}, err
+	}
+	queries := dbgen.New(conn)
+	now = now.UTC()
+	user, err := queries.CreateUser(ctx, dbgen.CreateUserParams{
+		ID:          uuid.NewString(),
+		Username:    strings.TrimSpace(username),
+		DisplayName: strings.TrimSpace(displayName),
+		IsActive:    true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	if err != nil {
+		return dbgen.User{}, err
+	}
+	_, err = queries.CreateUserPasswordCredential(ctx, dbgen.CreateUserPasswordCredentialParams{
+		ID:           uuid.NewString(),
+		UserID:       user.ID,
+		PasswordHash: passwordHash,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	})
+	if err != nil {
+		return dbgen.User{}, err
+	}
+	return user, nil
+}
+
+func SetUserPassword(ctx context.Context, conn *sql.DB, userID string, newPassword string, now time.Time) error {
+	passwordHash, err := security.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	queries := dbgen.New(conn)
+	_, err = queries.UpdateUserPasswordCredential(ctx, dbgen.UpdateUserPasswordCredentialParams{
+		PasswordHash: passwordHash,
+		UpdatedAt:    now.UTC(),
+		UserID:       userID,
+	})
+	return err
+}

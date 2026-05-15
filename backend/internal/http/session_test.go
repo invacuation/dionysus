@@ -301,7 +301,7 @@ func openSessionHTTPTestDB(t *testing.T) *sql.DB {
 	statements := []string{
 		`CREATE TABLE users (
 			id VARCHAR PRIMARY KEY NOT NULL,
-			username VARCHAR(150) NOT NULL,
+			username VARCHAR(150) NOT NULL UNIQUE,
 			display_name VARCHAR(200) NOT NULL,
 			is_active BOOLEAN NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -453,7 +453,7 @@ func insertHTTPUser(t *testing.T, conn *sql.DB, fixture httpUserFixture) {
 	if _, err := conn.ExecContext(
 		context.Background(),
 		`INSERT INTO user_password_credentials (id, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"password-1",
+		"password-"+fixture.ID,
 		fixture.ID,
 		fixture.PasswordHash,
 		fixture.CreatedAt,
@@ -465,11 +465,16 @@ func insertHTTPUser(t *testing.T, conn *sql.DB, fixture httpUserFixture) {
 
 func loginHTTPUser(t *testing.T, router http.Handler, password string) *httptest.ResponseRecorder {
 	t.Helper()
+	return loginNamedHTTPUser(t, router, "alice", password)
+}
+
+func loginNamedHTTPUser(t *testing.T, router http.Handler, username string, password string) *httptest.ResponseRecorder {
+	t.Helper()
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/auth/session",
-		strings.NewReader(`{"username":"alice","password":"`+password+`"}`),
+		strings.NewReader(`{"username":"`+username+`","password":"`+password+`"}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(response, request)

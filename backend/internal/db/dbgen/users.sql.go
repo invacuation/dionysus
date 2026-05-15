@@ -10,6 +10,97 @@ import (
 	"time"
 )
 
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+`
+
+type CreateUserParams struct {
+	ID          string
+	Username    string
+	DisplayName string
+	IsActive    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createUser,
+		arg.ID,
+		arg.Username,
+		arg.DisplayName,
+		arg.IsActive,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createUserPasswordCredential = `-- name: CreateUserPasswordCredential :one
+INSERT INTO user_password_credentials (
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?)
+RETURNING
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+`
+
+type CreateUserPasswordCredentialParams struct {
+	ID           string
+	UserID       string
+	PasswordHash string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (q *Queries) CreateUserPasswordCredential(ctx context.Context, arg CreateUserPasswordCredentialParams) (UserPasswordCredential, error) {
+	row := q.db.QueryRowContext(ctx, createUserPasswordCredential,
+		arg.ID,
+		arg.UserID,
+		arg.PasswordHash,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i UserPasswordCredential
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT
     id,

@@ -55,3 +55,35 @@ RETURNING
     password_hash,
     created_at,
     updated_at;
+
+-- name: CreateUser :one
+INSERT INTO users (
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING
+    id,
+    username,
+    display_name,
+    is_active,
+    created_at,
+    updated_at;
+
+-- name: CreateUserPasswordCredential :one
+INSERT INTO user_password_credentials (
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at
+) VALUES (?, ?, ?, ?, ?)
+RETURNING
+    id,
+    user_id,
+    password_hash,
+    created_at,
+    updated_at;

@@ -112,6 +112,16 @@ type accessPermissionAssignRequest struct {
 	ScopeID       *string `json:"scope_id"`
 }
 
+type accessUserCreateRequest struct {
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+}
+
+type accessUserPasswordSetRequest struct {
+	NewPassword string `json:"new_password"`
+}
+
 func mountAccessRoutes(router chi.Router, settings config.Settings, deps Dependencies) {
 	router.Get("/api/admin/access", func(w http.ResponseWriter, r *http.Request) {
 		listAccessManagement(w, r, settings, deps)
@@ -124,6 +134,12 @@ func mountAccessRoutes(router chi.Router, settings config.Settings, deps Depende
 	})
 	router.Post("/api/admin/access/permissions", func(w http.ResponseWriter, r *http.Request) {
 		assignAccessPermission(w, r, settings, deps)
+	})
+	router.Post("/api/admin/access/users", func(w http.ResponseWriter, r *http.Request) {
+		createAccessUser(w, r, settings, deps)
+	})
+	router.Patch("/api/admin/access/users/{userID}/password", func(w http.ResponseWriter, r *http.Request) {
+		setAccessUserPassword(w, r, settings, deps)
 	})
 }
 
@@ -310,6 +326,60 @@ func assignAccessPermission(w http.ResponseWriter, r *http.Request, settings con
 	writeJSON(w, http.StatusCreated, accessPermissionAssignmentFromDB(assignment))
 }
 
+func createAccessUser(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+		return
+	}
+	if !settings.LocalAuthEnabled {
+		writeError(w, http.StatusForbidden, "Local authentication is disabled")
+		return
+	}
+	var payload accessUserCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid user account request")
+		return
+	}
+	user, err := identity.CreateUser(r.Context(), deps.DB, payload.Username, payload.DisplayName, payload.Password, time.Now().UTC())
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			writeError(w, http.StatusConflict, "Username already exists")
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "Invalid user account request")
+		return
+	}
+	writeJSON(w, http.StatusCreated, accessUserFromDB(user))
+}
+
+func setAccessUserPassword(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
+		return
+	}
+	if !settings.LocalAuthEnabled {
+		writeError(w, http.StatusForbidden, "Local authentication is disabled")
+		return
+	}
+	var payload accessUserPasswordSetRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid new password")
+		return
+	}
+	queries := dbgen.New(deps.DB)
+	userID := chi.URLParam(r, "userID")
+	if _, err := queries.GetUser(r.Context(), userID); errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "User not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := identity.SetUserPassword(r.Context(), deps.DB, userID, payload.NewPassword, time.Now().UTC()); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid new password")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func principalExists(r *http.Request, queries *dbgen.Queries, principalType string, principalID string) bool {
 	switch principalType {
 	case identity.PrincipalTypeUser:
@@ -329,16 +399,20 @@ func principalExists(r *http.Request, queries *dbgen.Queries, principalType stri
 func accessUsersFromDB(users []dbgen.User) []accessUserResponse {
 	responses := make([]accessUserResponse, 0, len(users))
 	for _, user := range users {
-		responses = append(responses, accessUserResponse{
-			ID:          user.ID,
-			Username:    user.Username,
-			DisplayName: user.DisplayName,
-			IsActive:    user.IsActive,
-			CreatedAt:   user.CreatedAt.UTC(),
-			UpdatedAt:   user.UpdatedAt.UTC(),
-		})
+		responses = append(responses, accessUserFromDB(user))
 	}
 	return responses
+}
+
+func accessUserFromDB(user dbgen.User) accessUserResponse {
+	return accessUserResponse{
+		ID:          user.ID,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		IsActive:    user.IsActive,
+		CreatedAt:   user.CreatedAt.UTC(),
+		UpdatedAt:   user.UpdatedAt.UTC(),
+	}
 }
 
 func accessGroupFromDB(group dbgen.Group) accessGroupResponse {

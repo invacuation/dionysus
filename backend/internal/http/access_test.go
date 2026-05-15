@@ -217,6 +217,105 @@ func TestAccessAssignPermissionRejectsHalfScope(t *testing.T) {
 	assertJSONDetail(t, response, "Invalid permission assignment request")
 }
 
+func TestAccessAdminCreatesLocalUser(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	router, loginResponse := newAccessAdminTestRouter(t, conn)
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/access/users",
+		strings.NewReader(`{"username":"bob","display_name":"Bob Builder","password":"new correct horse battery"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	var body accessUserResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Username != "bob" || body.DisplayName != "Bob Builder" || !body.IsActive {
+		t.Fatalf("created user = %#v, want active bob", body)
+	}
+	bobLogin := loginNamedHTTPUser(t, router, "bob", "new correct horse battery")
+	if bobLogin.Code != http.StatusOK {
+		t.Fatalf("bob login status = %d, want %d; body = %s", bobLogin.Code, http.StatusOK, bobLogin.Body.String())
+	}
+}
+
+func TestAccessAdminCreateUserDisabledWhenLocalAuthDisabled(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	loginRouter, loginResponse := newAccessAdminTestRouter(t, conn)
+	_ = loginRouter
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              false,
+	}, WithDB(conn))
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/admin/access/users",
+		strings.NewReader(`{"username":"bob","display_name":"Bob Builder","password":"new correct horse battery"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	assertJSONDetail(t, response, "Local authentication is disabled")
+}
+
+func TestAccessAdminChangesUserPassword(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	router, loginResponse := newAccessAdminTestRouter(t, conn)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-2",
+		Username:     "bob",
+		DisplayName:  "Bob Builder",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/admin/access/users/user-2/password",
+		strings.NewReader(`{"new_password":"new correct horse battery"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	for _, cookie := range loginResponse.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNoContent, response.Body.String())
+	}
+	oldLogin := loginNamedHTTPUser(t, router, "bob", "correct horse battery staple")
+	if oldLogin.Code != http.StatusUnauthorized {
+		t.Fatalf("old password login status = %d, want %d", oldLogin.Code, http.StatusUnauthorized)
+	}
+	newLogin := loginNamedHTTPUser(t, router, "bob", "new correct horse battery")
+	if newLogin.Code != http.StatusOK {
+		t.Fatalf("new password login status = %d, want %d; body = %s", newLogin.Code, http.StatusOK, newLogin.Body.String())
+	}
+}
+
 func newAccessAdminTestRouter(t *testing.T, conn httpDB) (http.Handler, *httptest.ResponseRecorder) {
 	t.Helper()
 	now := time.Now().UTC()

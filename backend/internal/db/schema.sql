@@ -87,7 +87,7 @@ CREATE TABLE user_sessions (
 
 CREATE TABLE users (
     id VARCHAR PRIMARY KEY NOT NULL,
-    username VARCHAR(150) NOT NULL,
+    username VARCHAR(150) NOT NULL UNIQUE,
     display_name VARCHAR(200) NOT NULL,
     is_active BOOLEAN NOT NULL,
     created_at DATETIME NOT NULL,
