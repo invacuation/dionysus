@@ -7,6 +7,28 @@ CREATE TABLE app_security_settings (
     updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE machine_credentials (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    client_id VARCHAR(64) NOT NULL,
+    client_secret_digest VARCHAR(64) NOT NULL,
+    is_active BOOLEAN NOT NULL,
+    revoked_at DATETIME,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE machine_tokens (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    machine_credential_id VARCHAR NOT NULL,
+    token_digest VARCHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
+);
+
 CREATE TABLE user_sessions (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,

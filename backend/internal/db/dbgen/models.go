@@ -18,6 +18,27 @@ type AppSecuritySetting struct {
 	UpdatedAt                       time.Time
 }
 
+type MachineCredential struct {
+	ID                 string
+	Name               string
+	ClientID           string
+	ClientSecretDigest string
+	IsActive           bool
+	RevokedAt          sql.NullTime
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+type MachineToken struct {
+	ID                  string
+	MachineCredentialID string
+	TokenDigest         string
+	ExpiresAt           time.Time
+	RevokedAt           sql.NullTime
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type UserSession struct {
 	ID            string
 	UserID        string
