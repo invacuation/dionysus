@@ -7,6 +7,25 @@ CREATE TABLE app_security_settings (
     updated_at DATETIME NOT NULL
 );
 
+CREATE TABLE groups (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    display_name VARCHAR(200) NOT NULL,
+    is_protected BOOLEAN NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE group_memberships (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    group_id VARCHAR NOT NULL,
+    principal_type VARCHAR(20) NOT NULL,
+    principal_id VARCHAR(36) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+);
+
 CREATE TABLE machine_credentials (
     id VARCHAR PRIMARY KEY NOT NULL,
     name VARCHAR(150) NOT NULL,
@@ -27,6 +46,18 @@ CREATE TABLE machine_tokens (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
+);
+
+CREATE TABLE permission_assignments (
+    id VARCHAR PRIMARY KEY NOT NULL,
+    principal_type VARCHAR(20) NOT NULL,
+    principal_id VARCHAR(36) NOT NULL,
+    permission VARCHAR(120) NOT NULL,
+    effect VARCHAR(20) NOT NULL,
+    scope_type VARCHAR(50),
+    scope_id VARCHAR(36),
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
 );
 
 CREATE TABLE user_sessions (

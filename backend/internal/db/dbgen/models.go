@@ -18,6 +18,24 @@ type AppSecuritySetting struct {
 	UpdatedAt                       time.Time
 }
 
+type Group struct {
+	ID          string
+	Name        string
+	DisplayName string
+	IsProtected bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type GroupMembership struct {
+	ID            string
+	GroupID       string
+	PrincipalType string
+	PrincipalID   string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type MachineCredential struct {
 	ID                 string
 	Name               string
@@ -37,6 +55,18 @@ type MachineToken struct {
 	RevokedAt           sql.NullTime
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+type PermissionAssignment struct {
+	ID            string
+	PrincipalType string
+	PrincipalID   string
+	Permission    string
+	Effect        string
+	ScopeType     sql.NullString
+	ScopeID       sql.NullString
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type UserSession struct {
