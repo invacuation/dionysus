@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DIONYSUS_BACKEND_TARGET:-go-runtime}
     ports:
       - "8000:8000"
     environment:

@@ -31,6 +31,13 @@ cd python
 uv run uvicorn dionysus.app:create_app --factory --reload
 ```
 
+Run the Go backend only:
+
+```bash
+cd backend
+go run ./cmd/dionysus
+```
+
 Run the React frontend in another shell:
 
 ```bash
@@ -80,10 +87,16 @@ The compose setup supports two database options:
 2. **PostgreSQL** — either the bundled `db` service or a pre-existing PostgreSQL
    instance via `DIONYSUS_DATABASE_URL`.
 
-Run with SQLite (default):
+Run with SQLite (default Go backend):
 
 ```bash
 docker compose up --build
+```
+
+Run the Python backend image instead:
+
+```bash
+DIONYSUS_BACKEND_TARGET=python-runtime docker compose up --build
 ```
 
 On first startup with no existing users, Dionysus bootstraps the initial admin
@@ -128,6 +141,9 @@ uv run ruff check .
 uv run ruff format --check .
 uv run ty check src tests migrations
 uv run pytest
+cd ..
+cd backend
+go test ./...
 cd ..
 cd frontend
 bun run typecheck

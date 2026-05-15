@@ -37,6 +37,20 @@ func TestDriverAndDSNNormalizesSQLiteMemoryURL(t *testing.T) {
 	}
 }
 
+func TestDriverAndDSNNormalizesPythonPostgresURL(t *testing.T) {
+	driver, dsn, err := DriverAndDSN("postgresql+psycopg://user:pass@db:5432/dionysus")
+	if err != nil {
+		t.Fatalf("DriverAndDSN() returned error: %v", err)
+	}
+
+	if driver != "pgx" {
+		t.Fatalf("driver = %q, want pgx", driver)
+	}
+	if dsn != "postgresql://user:pass@db:5432/dionysus" {
+		t.Fatalf("dsn = %q, want postgresql://user:pass@db:5432/dionysus", dsn)
+	}
+}
+
 func TestOpenSQLiteMemory(t *testing.T) {
 	conn, err := Open("sqlite:///:memory:")
 	if err != nil {

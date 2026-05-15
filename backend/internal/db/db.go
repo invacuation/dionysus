@@ -27,6 +27,8 @@ func DriverAndDSN(databaseURL string) (string, string, error) {
 		return "sqlite", ":memory:", nil
 	case strings.HasPrefix(databaseURL, "sqlite:///"):
 		return "sqlite", strings.TrimPrefix(databaseURL, "sqlite:///"), nil
+	case strings.HasPrefix(databaseURL, "postgresql+psycopg://"):
+		return "pgx", "postgresql://" + strings.TrimPrefix(databaseURL, "postgresql+psycopg://"), nil
 	case strings.HasPrefix(databaseURL, "postgresql://"):
 		return "pgx", databaseURL, nil
 	case strings.HasPrefix(databaseURL, "postgres://"):
