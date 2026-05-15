@@ -40,6 +40,9 @@ func TestLoadDefaults(t *testing.T) {
 	if settings.MaxReportUploadBytes != 25*1024*1024 {
 		t.Fatalf("MaxReportUploadBytes = %d, want 26214400", settings.MaxReportUploadBytes)
 	}
+	if settings.FrontendDist != "../frontend/dist" {
+		t.Fatalf("FrontendDist = %q, want ../frontend/dist", settings.FrontendDist)
+	}
 }
 
 func TestLoadReadsEnvironment(t *testing.T) {
@@ -57,6 +60,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("DIONYSUS_RAW_REPORT_STORAGE_BACKEND", "local")
 	t.Setenv("DIONYSUS_RAW_REPORT_RETENTION_DAYS", "7")
 	t.Setenv("DIONYSUS_MAX_REPORT_UPLOAD_BYTES", "10485760")
+	t.Setenv("DIONYSUS_FRONTEND_DIST", "/tmp/frontend/dist")
 
 	settings, err := Load()
 	if err != nil {
@@ -102,6 +106,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	if settings.MaxReportUploadBytes != 10*1024*1024 {
 		t.Fatalf("MaxReportUploadBytes = %d, want 10485760", settings.MaxReportUploadBytes)
 	}
+	if settings.FrontendDist != "/tmp/frontend/dist" {
+		t.Fatalf("FrontendDist = %q, want /tmp/frontend/dist", settings.FrontendDist)
+	}
 }
 
 func TestLoadRejectsInvalidInteger(t *testing.T) {
@@ -130,6 +137,7 @@ func clearEnv(t *testing.T) {
 		"DIONYSUS_RAW_REPORT_STORAGE_BACKEND",
 		"DIONYSUS_RAW_REPORT_RETENTION_DAYS",
 		"DIONYSUS_MAX_REPORT_UPLOAD_BYTES",
+		"DIONYSUS_FRONTEND_DIST",
 	}
 	for _, name := range names {
 		t.Setenv(name, "")

@@ -22,6 +22,7 @@ type Settings struct {
 	RawReportStorageBackend           string
 	RawReportRetentionDays            int
 	MaxReportUploadBytes              int
+	FrontendDist                      string
 }
 
 func Load() (Settings, error) {
@@ -39,6 +40,7 @@ func Load() (Settings, error) {
 		RawReportStorageBackend:           getenv("DIONYSUS_RAW_REPORT_STORAGE_BACKEND", "none"),
 		RawReportRetentionDays:            0,
 		MaxReportUploadBytes:              DefaultMaxReportUploadBytes,
+		FrontendDist:                      getenv("DIONYSUS_FRONTEND_DIST", "../frontend/dist"),
 	}
 
 	var err error
