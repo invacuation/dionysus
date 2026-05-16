@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -92,6 +93,12 @@ func sanitizeMetadata(metadata map[string]any) map[string]any {
 }
 
 func sanitizeValue(value any) any {
+	if value != nil {
+		reflectedValue := reflect.ValueOf(value)
+		if (reflectedValue.Kind() == reflect.Pointer || reflectedValue.Kind() == reflect.Interface) && reflectedValue.IsNil() {
+			return nil
+		}
+	}
 	switch typed := value.(type) {
 	case map[string]any:
 		return sanitizeMetadata(typed)
@@ -104,7 +111,46 @@ func sanitizeValue(value any) any {
 	case string, int, int64, float64, bool, nil:
 		return typed
 	default:
+		if reflected := sanitizeReflectedValue(reflect.ValueOf(value)); reflected != nil {
+			return reflected
+		}
 		return fmt.Sprint(typed)
+	}
+}
+
+func sanitizeReflectedValue(value reflect.Value) any {
+	if !value.IsValid() {
+		return nil
+	}
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Map:
+		if value.Type().Key().Kind() != reflect.String {
+			return nil
+		}
+		sanitized := map[string]any{}
+		for _, key := range value.MapKeys() {
+			keyText := key.String()
+			if isSensitiveKey(keyText) {
+				sanitized[keyText] = redacted
+				continue
+			}
+			sanitized[keyText] = sanitizeValue(value.MapIndex(key).Interface())
+		}
+		return sanitized
+	case reflect.Slice, reflect.Array:
+		items := make([]any, 0, value.Len())
+		for i := 0; i < value.Len(); i++ {
+			items = append(items, sanitizeValue(value.Index(i).Interface()))
+		}
+		return items
+	default:
+		return nil
 	}
 }
 

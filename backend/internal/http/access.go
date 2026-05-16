@@ -35,6 +35,37 @@ var knownPermissions = []string{
 	"report:view",
 }
 
+var protectedAccessGroups = map[string]struct {
+	DisplayName string
+	Permissions []string
+}{
+	"administrators": {
+		DisplayName: "Administrators",
+	},
+	"users": {
+		DisplayName: "Users",
+		Permissions: []string{
+			"finding:comment",
+			"finding:status_change:request",
+			"finding:view",
+			"project:view",
+			"report:view",
+		},
+	},
+	"security-reviewers": {
+		DisplayName: "Security Reviewers",
+		Permissions: []string{
+			"finding:comment",
+			"finding:status_change:approve",
+			"finding:status_change:request",
+			"finding:view",
+			"import:history:view",
+			"project:view",
+			"report:view",
+		},
+	},
+}
+
 type accessListResponse struct {
 	Users                 []accessUserResponse                 `json:"users"`
 	MachineCredentials    []accessMachineCredentialResponse    `json:"machine_credentials"`
@@ -149,6 +180,10 @@ func listAccessManagement(w http.ResponseWriter, r *http.Request, settings confi
 		return
 	}
 	queries := dbgen.New(deps.DB)
+	if err := ensureProtectedAccessGroups(r, queries); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	users, err := queries.ListUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
@@ -183,6 +218,64 @@ func listAccessManagement(w http.ResponseWriter, r *http.Request, settings confi
 		PermissionAssignments: accessPermissionAssignmentsFromDB(assignments),
 		AvailablePermissions:  knownPermissions,
 	})
+}
+
+func ensureProtectedAccessGroups(r *http.Request, queries *dbgen.Queries) error {
+	for name, definition := range protectedAccessGroups {
+		group, err := queries.GetGroupByName(r.Context(), name)
+		if errors.Is(err, sql.ErrNoRows) {
+			now := time.Now().UTC()
+			group, err = queries.CreateGroup(r.Context(), dbgen.CreateGroupParams{
+				ID:          uuid.NewString(),
+				Name:        name,
+				DisplayName: definition.DisplayName,
+				IsProtected: true,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			})
+		}
+		if err != nil {
+			return err
+		}
+		for _, permission := range definition.Permissions {
+			if err := ensureAccessPermissionAssignment(r, queries, group.ID, permission); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func ensureAccessPermissionAssignment(r *http.Request, queries *dbgen.Queries, groupID string, permission string) error {
+	scopeType := sql.NullString{}
+	scopeID := sql.NullString{}
+	_, err := queries.GetPermissionAssignment(r.Context(), dbgen.GetPermissionAssignmentParams{
+		PrincipalType: identity.PrincipalTypeGroup,
+		PrincipalID:   groupID,
+		Permission:    permission,
+		Effect:        identity.PermissionEffectAllow,
+		ScopeType:     scopeType,
+		ScopeID:       scopeID,
+	})
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	now := time.Now().UTC()
+	_, err = queries.CreatePermissionAssignment(r.Context(), dbgen.CreatePermissionAssignmentParams{
+		ID:            uuid.NewString(),
+		PrincipalType: identity.PrincipalTypeGroup,
+		PrincipalID:   groupID,
+		Permission:    permission,
+		Effect:        identity.PermissionEffectAllow,
+		ScopeType:     scopeType,
+		ScopeID:       scopeID,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	return err
 }
 
 func createAccessGroup(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
@@ -362,8 +455,8 @@ func assignAccessPermission(w http.ResponseWriter, r *http.Request, settings con
 			"principal_id":   assignment.PrincipalID,
 			"permission":     assignment.Permission,
 			"effect":         assignment.Effect,
-			"scope_type":     optionalStringFromNull(assignment.ScopeType),
-			"scope_id":       optionalStringFromNull(assignment.ScopeID),
+			"scope_type":     payload.ScopeType,
+			"scope_id":       payload.ScopeID,
 		},
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")

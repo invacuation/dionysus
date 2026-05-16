@@ -85,9 +85,14 @@ func listMachineCredentials(w http.ResponseWriter, r *http.Request, settings con
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	creatorEvents, err := machineCredentialCreatorEvents(r, dbgen.New(deps.DB))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 	response := machineCredentialListResponse{Credentials: make([]machineCredentialResponse, 0, len(credentials))}
 	for _, credential := range credentials {
-		response.Credentials = append(response.Credentials, machineCredentialResponseFromDB(credential))
+		response.Credentials = append(response.Credentials, machineCredentialResponseFromDB(credential, creatorEvents[credential.ID]))
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -121,7 +126,7 @@ func createMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 		return
 	}
 	writeJSON(w, http.StatusCreated, machineCredentialWithSecretResponse{
-		machineCredentialResponse: machineCredentialResponseFromDB(credential),
+		machineCredentialResponse: machineCredentialResponseFromDB(credential, nil),
 		ClientSecret:              rawSecret,
 	})
 }
@@ -163,7 +168,7 @@ func regenerateMachineCredentialSecret(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	writeJSON(w, http.StatusOK, machineCredentialWithSecretResponse{
-		machineCredentialResponse: machineCredentialResponseFromDB(credential),
+		machineCredentialResponse: machineCredentialResponseFromDB(credential, nil),
 		ClientSecret:              rawSecret,
 	})
 }
@@ -204,7 +209,7 @@ func revokeMachineCredential(w http.ResponseWriter, r *http.Request, settings co
 		writeError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
-	writeJSON(w, http.StatusOK, machineCredentialResponseFromDB(credential))
+	writeJSON(w, http.StatusOK, machineCredentialResponseFromDB(credential, nil))
 }
 
 func tokenActionRevokeTokens(w http.ResponseWriter, r *http.Request) (bool, bool) {
@@ -252,20 +257,62 @@ func requireActorPermission(
 	return actor, true
 }
 
-func machineCredentialResponseFromDB(credential dbgen.MachineCredential) machineCredentialResponse {
+func machineCredentialCreatorEvents(r *http.Request, queries *dbgen.Queries) (map[string]*dbgen.AuditLogEvent, error) {
+	rows, err := queries.ListAuditLogEvents(r.Context(), dbgen.ListAuditLogEventsParams{
+		Column1:     "machine_credential.create",
+		EventType:   "machine_credential.create",
+		Column3:     nil,
+		ProjectID:   sql.NullString{},
+		Column5:     nil,
+		TargetType:  sql.NullString{},
+		Column7:     nil,
+		TargetID:    sql.NullString{},
+		Column9:     nil,
+		CreatedAt:   time.Time{},
+		Column11:    nil,
+		CreatedAt_2: time.Time{},
+		Limit:       200,
+	})
+	if err != nil {
+		return nil, err
+	}
+	creators := map[string]*dbgen.AuditLogEvent{}
+	for i := range rows {
+		if !rows[i].TargetID.Valid {
+			continue
+		}
+		if _, exists := creators[rows[i].TargetID.String]; !exists {
+			creators[rows[i].TargetID.String] = &rows[i]
+		}
+	}
+	return creators, nil
+}
+
+func machineCredentialResponseFromDB(credential dbgen.MachineCredential, creatorEvent *dbgen.AuditLogEvent) machineCredentialResponse {
 	var revokedAt *time.Time
 	if credential.RevokedAt.Valid {
 		value := credential.RevokedAt.Time.UTC()
 		revokedAt = &value
 	}
+	var createdByPrincipalType *string
+	var createdByPrincipalID *string
+	var createdByDisplay *string
+	if creatorEvent != nil {
+		createdByPrincipalType = optionalStringFromNull(creatorEvent.ActorPrincipalType)
+		createdByPrincipalID = optionalStringFromNull(creatorEvent.ActorPrincipalID)
+		createdByDisplay = optionalStringFromNull(creatorEvent.ActorDisplay)
+	}
 	return machineCredentialResponse{
-		ID:        credential.ID,
-		Name:      credential.Name,
-		ClientID:  credential.ClientID,
-		IsActive:  credential.IsActive,
-		CreatedAt: credential.CreatedAt.UTC(),
-		UpdatedAt: credential.UpdatedAt.UTC(),
-		RevokedAt: revokedAt,
+		ID:                     credential.ID,
+		Name:                   credential.Name,
+		ClientID:               credential.ClientID,
+		IsActive:               credential.IsActive,
+		CreatedByPrincipalType: createdByPrincipalType,
+		CreatedByPrincipalID:   createdByPrincipalID,
+		CreatedByDisplay:       createdByDisplay,
+		CreatedAt:              credential.CreatedAt.UTC(),
+		UpdatedAt:              credential.UpdatedAt.UTC(),
+		RevokedAt:              revokedAt,
 	}
 }
 

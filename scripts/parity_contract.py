@@ -46,8 +46,14 @@ class PythonBackend:
         )
         self.client = TestClient(app)
 
-    def request(self, method: str, path: str, json_body: Any | None = None) -> ContractResponse:
-        response = self.client.request(method, path, json=json_body)
+    def request(
+        self,
+        method: str,
+        path: str,
+        json_body: Any | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> ContractResponse:
+        response = self.client.request(method, path, json=json_body, headers=headers)
         return ContractResponse(response.status_code, response_body(response.content))
 
     def multipart(
@@ -71,16 +77,22 @@ class GoBackend:
         self.process = process
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
 
-    def request(self, method: str, path: str, json_body: Any | None = None) -> ContractResponse:
+    def request(
+        self,
+        method: str,
+        path: str,
+        json_body: Any | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> ContractResponse:
         data = None
-        headers = {"Accept": "application/json"}
+        request_headers = {"Accept": "application/json", **(headers or {})}
         if json_body is not None:
             data = json.dumps(json_body).encode()
-            headers["Content-Type"] = "application/json"
+            request_headers["Content-Type"] = "application/json"
         request = urllib.request.Request(  # noqa: S310 - base URL is fixed to local test server.
             urllib.parse.urljoin(self.base_url, path),
             data=data,
-            headers=headers,
+            headers=request_headers,
             method=method,
         )
         try:
@@ -202,6 +214,210 @@ def run_contracts(python_backend: PythonBackend, go_backend: GoBackend) -> None:
         {"username": "admin", "password": BOOTSTRAP_PASSWORD},
     )
     compare("current actor", python_backend, go_backend, "GET", "/api/auth/me")
+    compare("initial admin access", python_backend, go_backend, "GET", "/api/admin/access")
+    compare_pair(
+        "create access user",
+        python_backend.request(
+            "POST",
+            "/api/admin/access/users",
+            {
+                "username": "reviewer",
+                "display_name": "Security Reviewer",
+                "password": "reviewer-password",
+            },
+        ),
+        go_backend.request(
+            "POST",
+            "/api/admin/access/users",
+            {
+                "username": "reviewer",
+                "display_name": "Security Reviewer",
+                "password": "reviewer-password",
+            },
+        ),
+    )
+    compare_pair(
+        "create access group",
+        python_backend.request(
+            "POST",
+            "/api/admin/access/groups",
+            {"name": "triage-team", "display_name": "Triage Team"},
+        ),
+        go_backend.request(
+            "POST",
+            "/api/admin/access/groups",
+            {"name": "triage-team", "display_name": "Triage Team"},
+        ),
+    )
+    python_access = python_backend.request("GET", "/api/admin/access").body
+    go_access = go_backend.request("GET", "/api/admin/access").body
+    reviewer_id_python = item_id_by_field(python_access["users"], "username", "reviewer")
+    reviewer_id_go = item_id_by_field(go_access["users"], "username", "reviewer")
+    group_id_python = item_id_by_field(python_access["groups"], "name", "triage-team")
+    group_id_go = item_id_by_field(go_access["groups"], "name", "triage-team")
+    compare_pair(
+        "create access membership",
+        python_backend.request(
+            "POST",
+            "/api/admin/access/memberships",
+            {
+                "group_id": group_id_python,
+                "principal_type": "user",
+                "principal_id": reviewer_id_python,
+            },
+        ),
+        go_backend.request(
+            "POST",
+            "/api/admin/access/memberships",
+            {
+                "group_id": group_id_go,
+                "principal_type": "user",
+                "principal_id": reviewer_id_go,
+            },
+        ),
+    )
+    compare_pair(
+        "assign access permission",
+        python_backend.request(
+            "POST",
+            "/api/admin/access/permissions",
+            {
+                "principal_type": "group",
+                "principal_id": group_id_python,
+                "permission": "finding:view",
+                "effect": "allow",
+            },
+        ),
+        go_backend.request(
+            "POST",
+            "/api/admin/access/permissions",
+            {
+                "principal_type": "group",
+                "principal_id": group_id_go,
+                "permission": "finding:view",
+                "effect": "allow",
+            },
+        ),
+    )
+    compare_pair(
+        "set access user password",
+        python_backend.request(
+            "PATCH",
+            f"/api/admin/access/users/{reviewer_id_python}/password",
+            {"new_password": "new-reviewer-password"},
+        ),
+        go_backend.request(
+            "PATCH",
+            f"/api/admin/access/users/{reviewer_id_go}/password",
+            {"new_password": "new-reviewer-password"},
+        ),
+    )
+    compare("updated admin access", python_backend, go_backend, "GET", "/api/admin/access")
+    compare(
+        "empty machine credentials",
+        python_backend,
+        go_backend,
+        "GET",
+        "/api/admin/machine-credentials",
+    )
+    machine_python = python_backend.request(
+        "POST",
+        "/api/admin/machine-credentials",
+        {"name": "ci-importer"},
+    )
+    machine_go = go_backend.request(
+        "POST",
+        "/api/admin/machine-credentials",
+        {"name": "ci-importer"},
+    )
+    compare_pair("create machine credential", machine_python, machine_go)
+    credential_id_python = machine_python.body["id"]
+    credential_id_go = machine_go.body["id"]
+    token_python = python_backend.request(
+        "POST",
+        "/api/oauth/token",
+        {
+            "grant_type": "client_credentials",
+            "client_id": machine_python.body["client_id"],
+            "client_secret": machine_python.body["client_secret"],
+        },
+    )
+    token_go = go_backend.request(
+        "POST",
+        "/api/oauth/token",
+        {
+            "grant_type": "client_credentials",
+            "client_id": machine_go.body["client_id"],
+            "client_secret": machine_go.body["client_secret"],
+        },
+    )
+    compare_pair("machine oauth token", token_python, token_go)
+    compare_pair(
+        "machine bearer current actor",
+        python_backend.request(
+            "GET",
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token_python.body['access_token']}"},
+        ),
+        go_backend.request(
+            "GET",
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token_go.body['access_token']}"},
+        ),
+    )
+    compare_pair(
+        "invalid machine oauth token",
+        python_backend.request(
+            "POST",
+            "/api/oauth/token",
+            {
+                "grant_type": "client_credentials",
+                "client_id": machine_python.body["client_id"],
+                "client_secret": "wrong-secret",
+            },
+        ),
+        go_backend.request(
+            "POST",
+            "/api/oauth/token",
+            {
+                "grant_type": "client_credentials",
+                "client_id": machine_go.body["client_id"],
+                "client_secret": "wrong-secret",
+            },
+        ),
+    )
+    compare(
+        "machine credentials list",
+        python_backend,
+        go_backend,
+        "GET",
+        "/api/admin/machine-credentials",
+    )
+    regenerated_python = python_backend.request(
+        "POST",
+        f"/api/admin/machine-credentials/{credential_id_python}/regenerate-secret",
+        {"revoke_tokens": True},
+    )
+    regenerated_go = go_backend.request(
+        "POST",
+        f"/api/admin/machine-credentials/{credential_id_go}/regenerate-secret",
+        {"revoke_tokens": True},
+    )
+    compare_pair("regenerate machine credential", regenerated_python, regenerated_go)
+    compare_pair(
+        "revoke machine credential",
+        python_backend.request(
+            "POST",
+            f"/api/admin/machine-credentials/{credential_id_python}/revoke",
+            {"revoke_tokens": True},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/admin/machine-credentials/{credential_id_go}/revoke",
+            {"revoke_tokens": True},
+        ),
+    )
+    compare("admin sessions list", python_backend, go_backend, "GET", "/api/admin/sessions")
     compare("empty overview", python_backend, go_backend, "GET", "/api/overview")
     compare("security settings", python_backend, go_backend, "GET", "/api/admin/security-settings")
     compare(
@@ -513,6 +729,30 @@ def run_contracts(python_backend: PythonBackend, go_backend: GoBackend) -> None:
         python_backend.request("DELETE", f"/api/projects/{project_id_python}"),
         go_backend.request("DELETE", f"/api/projects/{project_id_go}"),
     )
+    compare("audit log", python_backend, go_backend, "GET", "/api/audit-log?limit=999")
+    compare(
+        "audit log event filter",
+        python_backend,
+        go_backend,
+        "GET",
+        "/api/audit-log?event_type=machine_credential.create&limit=999",
+    )
+    compare(
+        "audit log target filter",
+        python_backend,
+        go_backend,
+        "GET",
+        "/api/audit-log?target_type=machine_credential&limit=999",
+    )
+    session_id_python = python_backend.request("GET", "/api/admin/sessions").body["sessions"][0][
+        "id"
+    ]
+    session_id_go = go_backend.request("GET", "/api/admin/sessions").body["sessions"][0]["id"]
+    compare_pair(
+        "revoke admin session",
+        python_backend.request("POST", f"/api/admin/sessions/{session_id_python}/revoke"),
+        go_backend.request("POST", f"/api/admin/sessions/{session_id_go}/revoke"),
+    )
 
 
 def compare(
@@ -560,9 +800,16 @@ def normalize_value(value: Any) -> Any:
 
 
 def normalize_field(key: str, value: Any) -> Any:
+    if key in {"ip_address", "user_agent"}:
+        return "<client>"
     if value is None:
         return None
-    if key == "id" or key.endswith("_id"):
+    if (
+        key == "id"
+        or key.endswith("_id")
+        or key.endswith("_token")
+        or key in {"client_id", "client_secret", "access_token", "refresh_token"}
+    ):
         return "<id>"
     datetime_keys = {
         "created_at",
@@ -574,6 +821,7 @@ def normalize_field(key: str, value: Any) -> Any:
         "scan_started_at",
         "resolved_at",
         "decided_at",
+        "revoked_at",
     }
     if key in datetime_keys:
         return "<datetime>"
@@ -585,6 +833,13 @@ def asset_id_by_name(assets: list[dict[str, Any]], name: str) -> str:
         if asset["name"] == name:
             return str(asset["id"])
     raise LookupError(f"asset named {name!r} not found")
+
+
+def item_id_by_field(items: list[dict[str, Any]], field: str, value: str) -> str:
+    for item in items:
+        if item[field] == value:
+            return str(item["id"])
+    raise LookupError(f"item with {field}={value!r} not found")
 
 
 def multipart_body(boundary: str, fields: dict[str, str], file_path: Path) -> bytes:

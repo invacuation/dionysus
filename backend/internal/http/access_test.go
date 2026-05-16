@@ -72,13 +72,25 @@ func TestAccessListReturnsSafeAccessManagementData(t *testing.T) {
 	if len(body.Users) != 1 || body.Users[0].Username != "alice" {
 		t.Fatalf("users = %#v, want alice", body.Users)
 	}
-	if len(body.Groups) != 1 || body.Groups[0].Name != "operators" {
-		t.Fatalf("groups = %#v, want operators", body.Groups)
+	groupNames := map[string]bool{}
+	for _, group := range body.Groups {
+		groupNames[group.Name] = true
+	}
+	for _, name := range []string{"administrators", "operators", "security-reviewers", "users"} {
+		if !groupNames[name] {
+			t.Fatalf("groups = %#v, want %s", body.Groups, name)
+		}
 	}
 	if len(body.Memberships) != 1 || body.Memberships[0].GroupID != "group-1" {
 		t.Fatalf("memberships = %#v, want group-1 membership", body.Memberships)
 	}
-	if len(body.PermissionAssignments) != 1 || body.PermissionAssignments[0].Permission != "access:manage" {
+	hasAccessManage := false
+	for _, assignment := range body.PermissionAssignments {
+		if assignment.Permission == "access:manage" {
+			hasAccessManage = true
+		}
+	}
+	if !hasAccessManage {
 		t.Fatalf("permission assignments = %#v, want access:manage", body.PermissionAssignments)
 	}
 	if len(body.AvailablePermissions) == 0 {
