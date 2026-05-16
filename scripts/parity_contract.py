@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from http.cookiejar import CookieJar
 from pathlib import Path
@@ -22,6 +23,7 @@ from dionysus.config import AppSettings, Environment
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_DIR = ROOT / "python"
 BACKEND_DIR = ROOT / "backend"
+TRIVY_FIXTURE = PYTHON_DIR / "tests" / "fixtures" / "trivy-image.json"
 BOOTSTRAP_PASSWORD = "change-me-now-please"  # noqa: S105 - parity fixture password.
 
 
@@ -48,6 +50,20 @@ class PythonBackend:
         response = self.client.request(method, path, json=json_body)
         return ContractResponse(response.status_code, response_body(response.content))
 
+    def multipart(
+        self,
+        path: str,
+        fields: dict[str, str],
+        file_path: Path,
+    ) -> ContractResponse:
+        with file_path.open("rb") as report_file:
+            response = self.client.post(
+                path,
+                data=fields,
+                files={"report_file": (file_path.name, report_file, "application/json")},
+            )
+        return ContractResponse(response.status_code, response_body(response.content))
+
 
 class GoBackend:
     def __init__(self, addr: str, process: subprocess.Popen[str]) -> None:
@@ -66,6 +82,29 @@ class GoBackend:
             data=data,
             headers=headers,
             method=method,
+        )
+        try:
+            with self.opener.open(request, timeout=10) as response:
+                return ContractResponse(response.status, response_body(response.read()))
+        except urllib.error.HTTPError as error:
+            return ContractResponse(error.code, response_body(error.read()))
+
+    def multipart(
+        self,
+        path: str,
+        fields: dict[str, str],
+        file_path: Path,
+    ) -> ContractResponse:
+        boundary = f"dionysus-parity-{uuid.uuid4().hex}"
+        body = multipart_body(boundary, fields, file_path)
+        request = urllib.request.Request(  # noqa: S310 - base URL is fixed to local test server.
+            urllib.parse.urljoin(self.base_url, path),
+            data=body,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
         )
         try:
             with self.opener.open(request, timeout=10) as response:
@@ -224,9 +263,255 @@ def run_contracts(python_backend: PythonBackend, go_backend: GoBackend) -> None:
         ),
     )
     compare_pair(
+        "create scan target",
+        python_backend.request(
+            "POST",
+            f"/api/projects/{project_id_python}/scan-targets",
+            {
+                "folder_path": "images/releases",
+                "name": "Production Image",
+                "target_ref": "registry.example.test/dionysus/api:2026.05.07",
+            },
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/projects/{project_id_go}/scan-targets",
+            {
+                "folder_path": "images/releases",
+                "name": "Production Image",
+                "target_ref": "registry.example.test/dionysus/api:2026.05.07",
+            },
+        ),
+    )
+    compare_pair(
         "list assets",
         python_backend.request("GET", f"/api/projects/{project_id_python}/assets"),
         go_backend.request("GET", f"/api/projects/{project_id_go}/assets"),
+    )
+    python_assets = python_backend.request("GET", f"/api/projects/{project_id_python}/assets").body[
+        "assets"
+    ]
+    go_assets = go_backend.request("GET", f"/api/projects/{project_id_go}/assets").body["assets"]
+    target_id_python = asset_id_by_name(python_assets, "Production Image")
+    target_id_go = asset_id_by_name(go_assets, "Production Image")
+    compare_pair(
+        "update scan target",
+        python_backend.request(
+            "PATCH",
+            f"/api/projects/{project_id_python}/assets/{target_id_python}",
+            {
+                "name": "API Image",
+                "sla_tracking_enabled": False,
+                "sla_reporting_enabled": False,
+                "grace_period_enabled": True,
+                "grace_period_percent": 80,
+            },
+        ),
+        go_backend.request(
+            "PATCH",
+            f"/api/projects/{project_id_go}/assets/{target_id_go}",
+            {
+                "name": "API Image",
+                "sla_tracking_enabled": False,
+                "sla_reporting_enabled": False,
+                "grace_period_enabled": True,
+                "grace_period_percent": 80,
+            },
+        ),
+    )
+    compare_pair(
+        "trivy preview",
+        python_backend.multipart(
+            "/api/imports/trivy/preview",
+            {"project_id": project_id_python},
+            TRIVY_FIXTURE,
+        ),
+        go_backend.multipart(
+            "/api/imports/trivy/preview",
+            {"project_id": project_id_go},
+            TRIVY_FIXTURE,
+        ),
+    )
+    compare_pair(
+        "trivy import",
+        python_backend.multipart(
+            "/api/imports/trivy",
+            {
+                "project_id": project_id_python,
+                "scan_target_id": target_id_python,
+                "scan_started_at": "2026-05-07T09:30:00+00:00",
+            },
+            TRIVY_FIXTURE,
+        ),
+        go_backend.multipart(
+            "/api/imports/trivy",
+            {
+                "project_id": project_id_go,
+                "scan_target_id": target_id_go,
+                "scan_started_at": "2026-05-07T09:30:00+00:00",
+            },
+            TRIVY_FIXTURE,
+        ),
+    )
+    compare(
+        "admin import history", python_backend, go_backend, "GET", "/api/admin/imports?limit=999"
+    )
+    compare_pair(
+        "list findings",
+        python_backend.request(
+            "GET",
+            f"/api/findings?project_id={project_id_python}&sort=package&direction=asc",
+        ),
+        go_backend.request(
+            "GET",
+            f"/api/findings?project_id={project_id_go}&sort=package&direction=asc",
+        ),
+    )
+    compare_pair(
+        "filtered findings",
+        python_backend.request(
+            "GET",
+            f"/api/findings?asset_id={target_id_python}&severity=HIGH&fix_available=true",
+        ),
+        go_backend.request(
+            "GET",
+            f"/api/findings?asset_id={target_id_go}&severity=HIGH&fix_available=true",
+        ),
+    )
+    finding_id_python = python_backend.request(
+        "GET",
+        f"/api/findings?project_id={project_id_python}&sort=package&direction=asc",
+    ).body["rows"][0]["id"]
+    finding_id_go = go_backend.request(
+        "GET",
+        f"/api/findings?project_id={project_id_go}&sort=package&direction=asc",
+    ).body["rows"][0]["id"]
+    compare_pair(
+        "finding detail",
+        python_backend.request("GET", f"/api/findings/{finding_id_python}"),
+        go_backend.request("GET", f"/api/findings/{finding_id_go}"),
+    )
+    compare_pair(
+        "finding comment",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{finding_id_python}/comments",
+            {"body": "Needs owner validation."},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{finding_id_go}/comments",
+            {"body": "Needs owner validation."},
+        ),
+    )
+    compare_pair(
+        "finding direct status",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{finding_id_python}/status",
+            {"status": "fixed", "comment": "Patched in image 2026.05.08."},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{finding_id_go}/status",
+            {"status": "fixed", "comment": "Patched in image 2026.05.08."},
+        ),
+    )
+    review_finding_id_python = python_backend.request(
+        "GET",
+        f"/api/findings?project_id={project_id_python}&status=open&sort=package&direction=asc",
+    ).body["rows"][0]["id"]
+    review_finding_id_go = go_backend.request(
+        "GET",
+        f"/api/findings?project_id={project_id_go}&status=open&sort=package&direction=asc",
+    ).body["rows"][0]["id"]
+    compare_pair(
+        "finding status request",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_python}/status",
+            {
+                "status": "mitigated",
+                "comment": "Risk accepted for MVP.",
+                "require_peer_review": True,
+            },
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_go}/status",
+            {
+                "status": "mitigated",
+                "comment": "Risk accepted for MVP.",
+                "require_peer_review": True,
+            },
+        ),
+    )
+    request_id_python = python_backend.request(
+        "GET", f"/api/findings/{review_finding_id_python}"
+    ).body["status_change_requests"][0]["id"]
+    request_id_go = go_backend.request("GET", f"/api/findings/{review_finding_id_go}").body[
+        "status_change_requests"
+    ][0]["id"]
+    compare_pair(
+        "finding status request reject",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_python}/status-requests/{request_id_python}/reject",
+            {"comment": "Needs more evidence."},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_go}/status-requests/{request_id_go}/reject",
+            {"comment": "Needs more evidence."},
+        ),
+    )
+    compare_pair(
+        "finding status request approve",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_python}/status",
+            {"status": "mitigated", "comment": "Evidence added.", "require_peer_review": True},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_go}/status",
+            {"status": "mitigated", "comment": "Evidence added.", "require_peer_review": True},
+        ),
+    )
+    approve_request_id_python = python_backend.request(
+        "GET", f"/api/findings/{review_finding_id_python}"
+    ).body["status_change_requests"][0]["id"]
+    approve_request_id_go = go_backend.request("GET", f"/api/findings/{review_finding_id_go}").body[
+        "status_change_requests"
+    ][0]["id"]
+    compare_pair(
+        "finding status approve",
+        python_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_python}/status-requests/{approve_request_id_python}/approve",
+            {"comment": "Approved."},
+        ),
+        go_backend.request(
+            "POST",
+            f"/api/findings/{review_finding_id_go}/status-requests/{approve_request_id_go}/approve",
+            {"comment": "Approved."},
+        ),
+    )
+    compare_pair(
+        "delete throwaway folder",
+        python_backend.request(
+            "DELETE",
+            f"/api/projects/{project_id_python}/assets/{asset_id_by_name(python_assets, 'images')}",
+        ),
+        go_backend.request(
+            "DELETE",
+            f"/api/projects/{project_id_go}/assets/{asset_id_by_name(go_assets, 'images')}",
+        ),
+    )
+    compare_pair(
+        "delete project",
+        python_backend.request("DELETE", f"/api/projects/{project_id_python}"),
+        go_backend.request("DELETE", f"/api/projects/{project_id_go}"),
     )
 
 
@@ -286,10 +571,47 @@ def normalize_field(key: str, value: Any) -> Any:
         "first_detected_at",
         "idle_expires_at",
         "expires_at",
+        "scan_started_at",
+        "resolved_at",
+        "decided_at",
     }
     if key in datetime_keys:
         return "<datetime>"
     return normalize_value(value)
+
+
+def asset_id_by_name(assets: list[dict[str, Any]], name: str) -> str:
+    for asset in assets:
+        if asset["name"] == name:
+            return str(asset["id"])
+    raise LookupError(f"asset named {name!r} not found")
+
+
+def multipart_body(boundary: str, fields: dict[str, str], file_path: Path) -> bytes:
+    lines: list[bytes] = []
+    for name, value in fields.items():
+        lines.extend(
+            [
+                f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="{name}"'.encode(),
+                b"",
+                value.encode(),
+            ]
+        )
+    lines.extend(
+        [
+            f"--{boundary}".encode(),
+            (
+                f'Content-Disposition: form-data; name="report_file"; filename="{file_path.name}"'
+            ).encode(),
+            b"Content-Type: application/json",
+            b"",
+            file_path.read_bytes(),
+            f"--{boundary}--".encode(),
+            b"",
+        ]
+    )
+    return b"\r\n".join(lines)
 
 
 def response_body(payload: bytes) -> Any:

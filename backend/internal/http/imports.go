@@ -1,9 +1,7 @@
 package httpapi
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -248,7 +246,7 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 		Status:                "success",
 		ParserName:            trivyReportKind,
 		SanitizedMessage:      sql.NullString{String: "import completed", Valid: true},
-		CorrelationID:         sql.NullString{String: correlationID(), Valid: true},
+		CorrelationID:         sql.NullString{},
 		MetadataJson:          metadata,
 		CreatedAt:             now,
 		UpdatedAt:             now,
@@ -390,7 +388,7 @@ func createFailedImportAttempt(w http.ResponseWriter, r *http.Request, deps Depe
 		Status:                "failed",
 		ParserName:            trivyReportKind,
 		SanitizedMessage:      sql.NullString{String: message, Valid: true},
-		CorrelationID:         sql.NullString{String: correlationID(), Valid: true},
+		CorrelationID:         sql.NullString{},
 		MetadataJson:          mustJSON(map[string]any{"failure_category": "parser_error", "raw_report_retained": false}),
 		CreatedAt:             now,
 		UpdatedAt:             now,
@@ -457,12 +455,9 @@ func parseTrivyImageJSON(payload []byte) (parsedTrivyReport, error) {
 			}
 			finding := parsedFindingFromVulnerability(vuln, artifactName, target, resultType, resultClass)
 			existing, exists := byKey[finding.DedupeKey]
-			if exists && severityRank(existing.Severity) >= severityRank(finding.Severity) {
+			if exists {
 				byKey[finding.DedupeKey] = mergeParsedFindings(existing, finding)
 				continue
-			}
-			if exists {
-				finding = mergeParsedFindings(finding, existing)
 			}
 			byKey[finding.DedupeKey] = finding
 		}
@@ -494,20 +489,20 @@ func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, ar
 	packageName := stringPtrOrNil(stringValue(vuln["PkgName"]))
 	packageVersion := stringPtrOrNil(stringValue(vuln["InstalledVersion"]))
 	fixedVersion := stringPtrOrNil(stringValue(vuln["FixedVersion"]))
-	dedupeKey := strings.Join([]string{valueOrEmpty(artifactPath), valueOrEmpty(packageName), valueOrEmpty(packageVersion), valueOrEmpty(fixedVersion), primary}, "|")
+	dedupeKey := strings.Join([]string{trivyScanner, valueOrEmpty(artifactPath), valueOrEmpty(packageName), valueOrEmpty(packageVersion), valueOrEmpty(fixedVersion), primary}, "|")
 	scannerFindingID := primary
 	if packageName != nil && packageVersion != nil {
 		scannerFindingID = primary + ":" + *packageName + ":" + *packageVersion
 	}
-	source := map[string]any{"scanner": trivyScanner, "vulnerability_id": vulnID}
-	if title := stringValue(vuln["Title"]); title != "" {
-		source["title"] = title
-	}
-	if description := stringValue(vuln["Description"]); description != "" {
-		source["description"] = description
-	}
-	if resultClass != nil {
-		source["result_class"] = *resultClass
+	source := map[string]any{
+		"scanner":          trivyScanner,
+		"vulnerability_id": vulnID,
+		"package_id":       stringPtrOrNil(stringValue(vuln["PkgID"])),
+		"result_target":    artifactPath,
+		"result_class":     resultClass,
+		"result_type":      artifactType,
+		"title":            stringPtrOrNil(stringValue(vuln["Title"])),
+		"description":      stringPtrOrNil(stringValue(vuln["Description"])),
 	}
 	return parsedFinding{
 		ScannerFindingID:  scannerFindingID,
@@ -523,30 +518,64 @@ func parsedFindingFromVulnerability(vuln map[string]any, artifactName string, ar
 		ArtifactPath:      artifactPath,
 		DedupeKey:         dedupeKey,
 		References:        stringSlice(vuln["References"]),
-		CVSS:              mapValue(vuln["CVSS"]),
+		CVSS:              cvssValue(vuln["CVSS"]),
 		Source:            source,
 	}
 }
 
 func mergeParsedFindings(preferred parsedFinding, secondary parsedFinding) parsedFinding {
 	preferred.Identifiers = uniqueStrings(append(preferred.Identifiers, secondary.Identifiers...))
-	preferred.References = uniqueStrings(append(secondary.References, preferred.References...))
-	if _, ok := preferred.Source["description"]; !ok {
-		if value, exists := secondary.Source["description"]; exists {
-			preferred.Source["description"] = value
-		}
+	if severityRank(secondary.Severity) > severityRank(preferred.Severity) {
+		preferred.Severity = secondary.Severity
 	}
-	if _, ok := preferred.Source["title"]; !ok {
-		if value, exists := secondary.Source["title"]; exists {
-			preferred.Source["title"] = value
-		}
-	}
-	if _, ok := preferred.Source["result_class"]; !ok {
-		if value, exists := secondary.Source["result_class"]; exists {
-			preferred.Source["result_class"] = value
-		}
-	}
+	preferred.CVSS = mergeCVSS(preferred.CVSS, secondary.CVSS)
+	preferred.References = uniqueStrings(append(preferred.References, secondary.References...))
+	preferred.Source = mergeSource(preferred.Source, secondary.Source)
 	return preferred
+}
+
+func mergeCVSS(existing map[string]any, duplicate map[string]any) map[string]any {
+	merged := map[string]any{}
+	for source, value := range existing {
+		if typed, ok := value.(map[string]any); ok {
+			copied := map[string]any{}
+			for key, nested := range typed {
+				copied[key] = nested
+			}
+			merged[source] = copied
+			continue
+		}
+		merged[source] = value
+	}
+	for source, value := range duplicate {
+		duplicateValues, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		current, ok := merged[source].(map[string]any)
+		if !ok {
+			current = map[string]any{}
+			merged[source] = current
+		}
+		for key, nested := range duplicateValues {
+			current[key] = nested
+		}
+	}
+	return merged
+}
+
+func mergeSource(existing map[string]any, duplicate map[string]any) map[string]any {
+	duplicateCount := 1
+	if raw, ok := existing["duplicate_count"].(int); ok {
+		duplicateCount = raw
+	}
+	merged := map[string]any{}
+	for key, value := range existing {
+		merged[key] = value
+	}
+	merged["duplicate_count"] = duplicateCount + 1
+	merged["duplicate_vulnerability_ids"] = uniqueStrings([]string{stringValue(existing["vulnerability_id"]), stringValue(duplicate["vulnerability_id"])})
+	return merged
 }
 
 func previewResponseFromReport(report parsedTrivyReport) trivyPreviewResponse {
@@ -691,13 +720,6 @@ func valueOrEmpty(value *string) string {
 	return *value
 }
 
-func mapValue(value any) map[string]any {
-	if typed, ok := value.(map[string]any); ok {
-		return typed
-	}
-	return map[string]any{}
-}
-
 func mustJSON(value any) string {
 	payload, err := json.Marshal(value)
 	if err != nil {
@@ -706,16 +728,51 @@ func mustJSON(value any) string {
 	return string(payload)
 }
 
-func correlationID() string {
-	var data [8]byte
-	if _, err := rand.Read(data[:]); err != nil {
-		return uuid.NewString()
-	}
-	return hex.EncodeToString(data[:])
-}
-
 func bytesReader(payload []byte) *strings.Reader {
 	return strings.NewReader(string(payload))
+}
+
+func cvssValue(value any) map[string]any {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	normalized := map[string]any{}
+	for source, sourceValue := range raw {
+		sourceCVSS, ok := sourceValue.(map[string]any)
+		if !ok {
+			continue
+		}
+		sourceValues := map[string]any{}
+		if version := cvssVersion(sourceCVSS, "V2"); len(version) > 0 {
+			sourceValues["v2"] = version
+		}
+		if version := cvssVersion(sourceCVSS, "V3"); len(version) > 0 {
+			sourceValues["v3"] = version
+		}
+		if len(sourceValues) > 0 {
+			normalized[source] = sourceValues
+		}
+	}
+	return normalized
+}
+
+func cvssVersion(sourceCVSS map[string]any, prefix string) map[string]any {
+	version := map[string]any{}
+	switch score := sourceCVSS[prefix+"Score"].(type) {
+	case float64:
+		version["score"] = score
+	case int:
+		version["score"] = score
+	case json.Number:
+		if parsed, err := score.Float64(); err == nil {
+			version["score"] = parsed
+		}
+	}
+	if vector := stringValue(sourceCVSS[prefix+"Vector"]); vector != "" {
+		version["vector"] = vector
+	}
+	return version
 }
 
 func importHistoryLimit(r *http.Request) int64 {
