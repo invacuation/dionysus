@@ -1,8 +1,8 @@
 # Dionysus Go Backend
 
-This directory contains the in-progress Go backend rewrite.
-
-The Python backend under `../python` remains the current production backend until the Go backend reaches parity.
+This directory contains the default backend runtime for the migration period.
+The Python backend under `../python` is still kept in the repository for manual
+parity verification and for Alembic migrations.
 
 Run tests:
 
@@ -10,10 +10,13 @@ Run tests:
 go test ./...
 ```
 
-Run the skeleton server:
+Run the backend:
 
 ```bash
 go run ./cmd/dionysus
 ```
 
-The skeleton currently exposes `/healthz`.
+The server exposes the same `/api` surface as the Python backend and serves the
+React build from `../frontend/dist` by default. During the dual-backend phase,
+run `cd ../python && uv run python ../scripts/parity_contract.py` before relying
+on behavior changes.

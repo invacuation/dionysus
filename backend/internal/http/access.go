@@ -35,14 +35,19 @@ var knownPermissions = []string{
 	"report:view",
 }
 
-var protectedAccessGroups = map[string]struct {
+type protectedAccessGroup struct {
+	Name        string
 	DisplayName string
 	Permissions []string
-}{
-	"administrators": {
+}
+
+var protectedAccessGroups = []protectedAccessGroup{
+	{
+		Name:        "administrators",
 		DisplayName: "Administrators",
 	},
-	"users": {
+	{
+		Name:        "users",
 		DisplayName: "Users",
 		Permissions: []string{
 			"finding:comment",
@@ -52,7 +57,8 @@ var protectedAccessGroups = map[string]struct {
 			"report:view",
 		},
 	},
-	"security-reviewers": {
+	{
+		Name:        "security-reviewers",
 		DisplayName: "Security Reviewers",
 		Permissions: []string{
 			"finding:comment",
@@ -221,13 +227,13 @@ func listAccessManagement(w http.ResponseWriter, r *http.Request, settings confi
 }
 
 func ensureProtectedAccessGroups(r *http.Request, queries *dbgen.Queries) error {
-	for name, definition := range protectedAccessGroups {
-		group, err := queries.GetGroupByName(r.Context(), name)
+	for _, definition := range protectedAccessGroups {
+		group, err := queries.GetGroupByName(r.Context(), definition.Name)
 		if errors.Is(err, sql.ErrNoRows) {
 			now := time.Now().UTC()
 			group, err = queries.CreateGroup(r.Context(), dbgen.CreateGroupParams{
 				ID:          uuid.NewString(),
-				Name:        name,
+				Name:        definition.Name,
 				DisplayName: definition.DisplayName,
 				IsProtected: true,
 				CreatedAt:   now,

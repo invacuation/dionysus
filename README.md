@@ -4,13 +4,14 @@ Security scan triage web application.
 
 ## Local Development
 
-Use Python 3.13 with `uv`. Use Node 22.12.0 from `.nvmrc` / `.node-version`, and run
-frontend package scripts with Bun.
+Use Go for the default backend, Python 3.13 with `uv` for the legacy backend and
+Alembic migrations, and Node 22.12.0 from `.nvmrc` / `.node-version` with Bun for
+frontend package scripts.
 
 Releases are managed by release-please. Regular feature PRs should not edit version files;
 release-please opens dedicated release PRs with the package metadata and changelog updates.
 
-Install Python dependencies:
+Install Python dependencies for migrations, parity checks, and the legacy backend:
 
 ```bash
 cd python
@@ -24,18 +25,18 @@ cd frontend
 bun install
 ```
 
-Run the backend only:
-
-```bash
-cd python
-uv run uvicorn dionysus.app:create_app --factory --reload
-```
-
 Run the Go backend only:
 
 ```bash
 cd backend
 go run ./cmd/dionysus
+```
+
+Run the Python backend only:
+
+```bash
+cd python
+uv run uvicorn dionysus.app:create_app --factory --reload
 ```
 
 Run the React frontend in another shell:
@@ -87,7 +88,7 @@ The compose setup supports two database options:
 2. **PostgreSQL** — either the bundled `db` service or a pre-existing PostgreSQL
    instance via `DIONYSUS_DATABASE_URL`.
 
-Run with SQLite (default Go backend):
+Run with SQLite using the default Go backend:
 
 ```bash
 docker compose up --build
@@ -98,6 +99,10 @@ Run the Python backend image instead:
 ```bash
 DIONYSUS_BACKEND_TARGET=python-runtime docker compose up --build
 ```
+
+The Go runtime still runs Alembic from the Python environment before starting the
+Go binary. Keep the `python/` directory available until migrations move to a Go
+owned path or Alembic is intentionally retired.
 
 On first startup with no existing users, Dionysus bootstraps the initial admin
 from environment variables. `DIONYSUS_BOOTSTRAP_ADMIN_USERNAME` must be a login
@@ -130,6 +135,28 @@ DIONYSUS_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME \
 ```
 
 The app is available at `http://127.0.0.1:8000`.
+
+## Manual Parity Verification
+
+Before deleting or disabling the Python backend, manually smoke both Docker
+targets against a fresh database:
+
+```bash
+docker compose down --volumes --remove-orphans
+docker compose up --build
+```
+
+Then repeat with the Python target:
+
+```bash
+docker compose down --volumes --remove-orphans
+DIONYSUS_BACKEND_TARGET=python-runtime docker compose up --build
+```
+
+For each target, sign in with the configured bootstrap admin, create a project,
+import `python/tests/fixtures/trivy-image.json`, review the findings list, and
+check the admin security pages. The CI parity contract is the automated gate; this
+manual pass is the final review before removing Python runtime support.
 
 ## Quality Gate
 
