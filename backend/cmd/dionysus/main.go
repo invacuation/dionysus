@@ -35,7 +35,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    ":8000",
+		Addr:    settings.HTTPAddr,
 		Handler: app.New(settings, httpapi.WithDB(conn)),
 	}
 	log.Printf("listening on %s", server.Addr)

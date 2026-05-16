@@ -145,6 +145,9 @@ cd ..
 cd backend
 go test ./...
 cd ..
+cd python
+uv run python ../scripts/parity_contract.py
+cd ..
 cd frontend
 bun run typecheck
 bun run e2e

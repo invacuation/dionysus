@@ -16,6 +16,9 @@ func TestLoadDefaults(t *testing.T) {
 	if settings.DatabaseURL != "sqlite:///../var/dionysus.db" {
 		t.Fatalf("DatabaseURL = %q, want sqlite:///../var/dionysus.db", settings.DatabaseURL)
 	}
+	if settings.HTTPAddr != ":8000" {
+		t.Fatalf("HTTPAddr = %q, want :8000", settings.HTTPAddr)
+	}
 	if settings.SessionIdleTimeoutMinutes != 30 {
 		t.Fatalf("SessionIdleTimeoutMinutes = %d, want 30", settings.SessionIdleTimeoutMinutes)
 	}
@@ -49,6 +52,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DIONYSUS_ENVIRONMENT", "test")
 	t.Setenv("DIONYSUS_DATABASE_URL", "sqlite:///tmp/dionysus.db")
+	t.Setenv("DIONYSUS_HTTP_ADDR", "127.0.0.1:18080")
 	t.Setenv("DIONYSUS_SESSION_IDLE_TIMEOUT_MINUTES", "10")
 	t.Setenv("DIONYSUS_SESSION_ABSOLUTE_TIMEOUT_MINUTES", "60")
 	t.Setenv("DIONYSUS_MACHINE_ACCESS_TOKEN_EXPIRES_MINUTES", "5")
@@ -72,6 +76,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if settings.DatabaseURL != "sqlite:///tmp/dionysus.db" {
 		t.Fatalf("DatabaseURL = %q, want sqlite:///tmp/dionysus.db", settings.DatabaseURL)
+	}
+	if settings.HTTPAddr != "127.0.0.1:18080" {
+		t.Fatalf("HTTPAddr = %q, want 127.0.0.1:18080", settings.HTTPAddr)
 	}
 	if settings.SessionIdleTimeoutMinutes != 10 {
 		t.Fatalf("SessionIdleTimeoutMinutes = %d, want 10", settings.SessionIdleTimeoutMinutes)
@@ -126,6 +133,7 @@ func clearEnv(t *testing.T) {
 	names := []string{
 		"DIONYSUS_ENVIRONMENT",
 		"DIONYSUS_DATABASE_URL",
+		"DIONYSUS_HTTP_ADDR",
 		"DIONYSUS_SESSION_IDLE_TIMEOUT_MINUTES",
 		"DIONYSUS_SESSION_ABSOLUTE_TIMEOUT_MINUTES",
 		"DIONYSUS_MACHINE_ACCESS_TOKEN_EXPIRES_MINUTES",

@@ -11,6 +11,7 @@ const DefaultMaxReportUploadBytes = 25 * 1024 * 1024
 type Settings struct {
 	Environment                       string
 	DatabaseURL                       string
+	HTTPAddr                          string
 	SessionIdleTimeoutMinutes         int
 	SessionAbsoluteTimeoutMinutes     int
 	MachineAccessTokenExpiresMinutes  int
@@ -29,6 +30,7 @@ func Load() (Settings, error) {
 	settings := Settings{
 		Environment:                       getenv("DIONYSUS_ENVIRONMENT", "local"),
 		DatabaseURL:                       getenv("DIONYSUS_DATABASE_URL", "sqlite:///../var/dionysus.db"),
+		HTTPAddr:                          getenv("DIONYSUS_HTTP_ADDR", ":8000"),
 		SessionIdleTimeoutMinutes:         30,
 		SessionAbsoluteTimeoutMinutes:     480,
 		MachineAccessTokenExpiresMinutes:  15,
