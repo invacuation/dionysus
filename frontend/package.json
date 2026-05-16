@@ -12,6 +12,7 @@
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "e2e": "playwright test",
+    "e2e:deployed": "E2E_REAL_BACKEND=1 playwright test deployed-app.e2e.ts",
     "e2e:headed": "playwright test --headed"
   },
   "dependencies": {
