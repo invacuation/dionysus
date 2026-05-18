@@ -7,9 +7,11 @@ Security scan triage web application.
 Use Go 1.26 for the backend and Node 22.12.0 from `.nvmrc` / `.node-version`
 with Bun for frontend package scripts.
 
+The application defaults to using SQLite, storing the db at `./var/dionysus.db`.
+
 Releases are managed by release-please. Regular feature PRs should not edit
 version files; release-please opens dedicated release PRs with package metadata
-and changelog updates.
+and changelog updates
 
 Install frontend dependencies:
 
@@ -22,6 +24,16 @@ Run the backend:
 
 ```bash
 cd backend
+go run ./cmd/dionysus
+```
+
+If you haven't set up the DB uo yet, you'll have to run this instead:
+```bash
+cd backend
+
+DIONYSUS_BOOTSTRAP_ADMIN_USERNAME=<admin_username> \
+DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD=<admin_password> \
+DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME=<admin_display_name> \
 go run ./cmd/dionysus
 ```
 
@@ -41,6 +53,7 @@ cd frontend
 bun run dev
 ```
 
+Browse to `http://127.0.0.1:5173` to use Dionysus.
 Vite proxies `/api` requests to the backend at `http://127.0.0.1:8000`.
 
 For a production/static-style local build:
