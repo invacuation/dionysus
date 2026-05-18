@@ -68,6 +68,34 @@ func TestTrivyImportPersistsScanFindingsAndAudit(t *testing.T) {
 	assertAuditEvent(t, conn, "import.trivy.success", targetID, `"finding_count":2`)
 }
 
+func TestTrivyImportUsesScanStartedAtForFindingSLAAnchor(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+
+	response := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID, "scan_started_at": "2026-04-01T12:00:00Z"}, trivyFixture(t))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	want := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	var firstSeenAt, lastSeenAt, groupFirstDetectedAt time.Time
+	if err := conn.QueryRowContext(t.Context(), `
+		SELECT raw_finding_instances.first_seen_at, raw_finding_instances.last_seen_at, project_vulnerability_groups.first_detected_at
+		FROM raw_finding_instances
+		JOIN project_vulnerability_groups ON project_vulnerability_groups.project_id = raw_finding_instances.project_id
+			AND project_vulnerability_groups.dedupe_key = raw_finding_instances.primary_identifier
+		WHERE raw_finding_instances.package_name = ?
+	`, "openssl").Scan(&firstSeenAt, &lastSeenAt, &groupFirstDetectedAt); err != nil {
+		t.Fatalf("select finding SLA anchors: %v", err)
+	}
+	if !firstSeenAt.Equal(want) || !lastSeenAt.Equal(want) || !groupFirstDetectedAt.Equal(want) {
+		t.Fatalf("SLA anchors = first %s last %s group %s, want %s", firstSeenAt.Format(time.RFC3339), lastSeenAt.Format(time.RFC3339), groupFirstDetectedAt.Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
 func TestTrivyImportAcceptsLocalDatetimeScanStartedAt(t *testing.T) {
 	conn := openSessionHTTPTestDB(t)
 	now := time.Now().UTC()

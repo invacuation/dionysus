@@ -362,6 +362,10 @@ type trivyPersistResult struct {
 func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, scanTargetID string, actor identity.AuthenticatedActor, report parsedTrivyReport, startedAt *time.Time) (trivyPersistResult, error) {
 	queries := dbgen.New(deps.DB)
 	now := time.Now().UTC()
+	findingSeenAt := now
+	if startedAt != nil {
+		findingSeenAt = startedAt.UTC()
+	}
 	metadata := mustJSON(map[string]any{"scanner": trivyScanner, "finding_count": len(report.Findings), "raw_report_retained": false})
 	attempt, err := queries.CreateImportAttempt(r.Context(), dbgen.CreateImportAttemptParams{
 		ID:                    uuid.NewString(),
@@ -408,7 +412,7 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 			ProjectID:                 projectID,
 			PrimaryIdentifier:         finding.PrimaryIdentifier,
 			AdditionalIdentifiersJson: mustJSON(additional),
-			FirstDetectedAt:           now,
+			FirstDetectedAt:           findingSeenAt,
 			Severity:                  finding.Severity,
 			Status:                    groupStatus,
 			DedupeKey:                 finding.PrimaryIdentifier,
@@ -435,8 +439,8 @@ func persistTrivyImport(r *http.Request, deps Dependencies, projectID string, sc
 			ArtifactName:        nullStringFromPtr(finding.ArtifactName),
 			ArtifactType:        nullStringFromPtr(finding.ArtifactType),
 			ArtifactPath:        nullStringFromPtr(finding.ArtifactPath),
-			FirstSeenAt:         now,
-			LastSeenAt:          now,
+			FirstSeenAt:         findingSeenAt,
+			LastSeenAt:          findingSeenAt,
 			PresentInLatestScan: true,
 			Status:              "open",
 			ReferencesJson:      mustJSON(finding.References),
