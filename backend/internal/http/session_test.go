@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,6 +76,58 @@ func TestAuthSessionCreatesBrowserSession(t *testing.T) {
 	router.ServeHTTP(meResponse, meRequest)
 	if meResponse.Code != http.StatusOK {
 		t.Fatalf("me status = %d, want %d; body = %s", meResponse.Code, http.StatusOK, meResponse.Body.String())
+	}
+}
+
+func TestConcurrentSessionChecksDoNotReturnServerErrors(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: pythonArgon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, router, "correct horse battery staple")
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want %d; body = %s", loginResponse.Code, http.StatusOK, loginResponse.Body.String())
+	}
+
+	const requestCount = 20
+	var wg sync.WaitGroup
+	type result struct {
+		status int
+		body   string
+	}
+	results := make(chan result, requestCount)
+	for range requestCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+			for _, cookie := range loginResponse.Result().Cookies() {
+				request.AddCookie(cookie)
+			}
+			router.ServeHTTP(response, request)
+			results <- result{status: response.Code, body: response.Body.String()}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	for result := range results {
+		if result.status != http.StatusOK {
+			t.Fatalf("status = %d, want %d; body = %s", result.status, http.StatusOK, result.body)
+		}
 	}
 }
 

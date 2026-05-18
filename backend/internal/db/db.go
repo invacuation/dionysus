@@ -18,6 +18,10 @@ func Open(databaseURL string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+	if driver == "sqlite" {
+		conn.SetMaxOpenConns(1)
+		conn.SetMaxIdleConns(1)
+	}
 	return conn, nil
 }
 
