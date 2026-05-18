@@ -203,6 +203,61 @@ SELECT
 FROM asset_nodes
 WHERE project_id = ? AND path = ?;
 
+-- name: GetProjectTargetByParentAndTargetRef :one
+SELECT
+    id,
+    project_id,
+    parent_id,
+    node_type,
+    name,
+    path,
+    target_ref,
+    metadata_json,
+    sla_tracking_enabled,
+    sla_reporting_enabled,
+    grace_period_enabled,
+    grace_period_percent,
+    sort_order,
+    created_at,
+    updated_at
+FROM asset_nodes
+WHERE
+    project_id = sqlc.arg(project_id)
+    AND node_type = sqlc.arg(node_type)
+    AND target_ref = sqlc.arg(target_ref)
+    AND (
+        parent_id = sqlc.narg(parent_id)
+        OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL)
+    )
+LIMIT 1;
+
+-- name: GetProjectAssetByParentAndName :one
+SELECT
+    id,
+    project_id,
+    parent_id,
+    node_type,
+    name,
+    path,
+    target_ref,
+    metadata_json,
+    sla_tracking_enabled,
+    sla_reporting_enabled,
+    grace_period_enabled,
+    grace_period_percent,
+    sort_order,
+    created_at,
+    updated_at
+FROM asset_nodes
+WHERE
+    project_id = sqlc.arg(project_id)
+    AND name = sqlc.arg(name)
+    AND (
+        parent_id = sqlc.narg(parent_id)
+        OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL)
+    )
+LIMIT 1;
+
 -- name: CreateAssetNode :one
 INSERT INTO asset_nodes (
     id,
@@ -271,6 +326,13 @@ RETURNING
 UPDATE asset_nodes
 SET
     path = ?,
+    updated_at = ?
+WHERE id = ?;
+
+-- name: UpdateAssetTargetRef :exec
+UPDATE asset_nodes
+SET
+    target_ref = ?,
     updated_at = ?
 WHERE id = ?;
 

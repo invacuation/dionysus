@@ -154,36 +154,43 @@ func importTrivy(w http.ResponseWriter, r *http.Request, settings config.Setting
 		return
 	}
 	scanTargetID := strings.TrimSpace(r.FormValue("scan_target_id"))
-	if scanTargetID == "" {
-		writeError(w, http.StatusBadRequest, "scan_target_id is required")
+	folderID := strings.TrimSpace(r.FormValue("folder_id"))
+	folderPath := strings.TrimSpace(r.FormValue("folder_path"))
+	if scanTargetID != "" && (folderID != "" || folderPath != "") {
+		writeError(w, http.StatusBadRequest, "Provide either scan_target_id or folder_id/folder_path, not both")
+		return
+	}
+	if folderID != "" && folderPath != "" {
+		writeError(w, http.StatusBadRequest, "Provide either folder_id or folder_path, not both")
 		return
 	}
 	queries := dbgen.New(deps.DB)
-	scanTarget, ok := getProjectAssetForInventory(w, r, queries, project.ID, scanTargetID)
-	if !ok {
-		return
-	}
-	if scanTarget.NodeType != "scan_target" {
-		writeError(w, http.StatusNotFound, "Scan target not found")
-		return
-	}
 	startedAt, ok := parseOptionalScanTime(w, r.FormValue("scan_started_at"))
 	if !ok {
 		return
 	}
 	report, err := parseTrivyImageJSON(payload)
 	if err != nil {
-		attempt := createFailedImportAttempt(w, r, deps, project.ID, scanTarget.ID, *actor, err.Error())
+		failedTargetID := scanTargetID
+		attempt := createFailedImportAttempt(w, r, deps, project.ID, failedTargetID, *actor, err.Error())
 		if attempt == nil {
 			return
 		}
+		targetType := "scan_target"
+		auditTargetID := failedTargetID
+		var metadataScanTargetID any = failedTargetID
+		if scanTargetID == "" {
+			targetType = "project"
+			auditTargetID = project.ID
+			metadataScanTargetID = nil
+		}
 		if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
 			Type:       "import.trivy.failure",
-			TargetType: stringPtr("scan_target"),
-			TargetID:   stringPtr(scanTarget.ID),
+			TargetType: stringPtr(targetType),
+			TargetID:   stringPtr(auditTargetID),
 			ProjectID:  stringPtr(project.ID),
 			Metadata: map[string]any{
-				"scan_target_id":   scanTarget.ID,
+				"scan_target_id":   metadataScanTargetID,
 				"failure_category": "parser_error",
 				"detail":           err.Error(),
 			},
@@ -192,6 +199,10 @@ func importTrivy(w http.ResponseWriter, r *http.Request, settings config.Setting
 			return
 		}
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	scanTarget, ok := resolveImportScanTarget(w, r, deps, queries, project.ID, scanTargetID, folderID, folderPath, report)
+	if !ok {
 		return
 	}
 	if startedAt == nil {
@@ -225,6 +236,121 @@ func importTrivy(w http.ResponseWriter, r *http.Request, settings config.Setting
 		ReportKind:      trivyReportKind,
 		FindingCount:    len(report.Findings),
 		GroupCount:      groupCount(report),
+	})
+}
+
+func resolveImportScanTarget(w http.ResponseWriter, r *http.Request, deps Dependencies, queries *dbgen.Queries, projectID string, scanTargetID string, folderID string, folderPath string, report parsedTrivyReport) (dbgen.AssetNode, bool) {
+	if scanTargetID != "" {
+		scanTarget, ok := getProjectAssetForInventory(w, r, queries, projectID, scanTargetID)
+		if !ok {
+			return dbgen.AssetNode{}, false
+		}
+		if scanTarget.NodeType != "scan_target" {
+			writeError(w, http.StatusNotFound, "Scan target not found")
+			return dbgen.AssetNode{}, false
+		}
+		return scanTarget, true
+	}
+
+	var folder *dbgen.AssetNode
+	if folderID != "" {
+		resolved, ok := getProjectAssetForInventory(w, r, queries, projectID, folderID)
+		if !ok {
+			return dbgen.AssetNode{}, false
+		}
+		if resolved.NodeType != "folder" {
+			writeError(w, http.StatusNotFound, "Folder not found")
+			return dbgen.AssetNode{}, false
+		}
+		folder = &resolved
+	} else if folderPath != "" {
+		resolved, err := resolveFolderPath(r, deps, projectID, folderPath)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return dbgen.AssetNode{}, false
+		}
+		folder = &resolved
+	}
+
+	scanTarget, err := createOrReuseImportScanTarget(r, queries, projectID, folder, r.FormValue("asset_name"), r.FormValue("target_ref"), report)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return dbgen.AssetNode{}, false
+	}
+	return scanTarget, true
+}
+
+func createOrReuseImportScanTarget(r *http.Request, queries *dbgen.Queries, projectID string, folder *dbgen.AssetNode, assetName string, targetRef string, report parsedTrivyReport) (dbgen.AssetNode, error) {
+	resolvedTargetRef := strings.TrimSpace(targetRef)
+	if resolvedTargetRef == "" {
+		resolvedTargetRef = strings.TrimSpace(report.Target)
+	}
+	resolvedAssetName := strings.TrimSpace(assetName)
+	if resolvedAssetName == "" {
+		resolvedAssetName = resolvedTargetRef
+	}
+	if resolvedAssetName == "" || resolvedTargetRef == "" {
+		return dbgen.AssetNode{}, errors.New("asset_name or detected report target is required")
+	}
+	name, err := validateAssetName(resolvedAssetName)
+	if err != nil {
+		return dbgen.AssetNode{}, err
+	}
+	parentID := sql.NullString{}
+	parentPath := ""
+	if folder != nil {
+		parentID = sql.NullString{String: folder.ID, Valid: true}
+		parentPath = folder.Path
+	}
+	existingByRef, err := queries.GetProjectTargetByParentAndTargetRef(r.Context(), dbgen.GetProjectTargetByParentAndTargetRefParams{
+		ProjectID: projectID,
+		NodeType:  "scan_target",
+		TargetRef: sql.NullString{String: resolvedTargetRef, Valid: true},
+		ParentID:  parentID,
+	})
+	if err == nil {
+		return existingByRef, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return dbgen.AssetNode{}, err
+	}
+	existingByName, err := queries.GetProjectAssetByParentAndName(r.Context(), dbgen.GetProjectAssetByParentAndNameParams{
+		ProjectID: projectID,
+		Name:      name,
+		ParentID:  parentID,
+	})
+	if err == nil {
+		if existingByName.NodeType != "scan_target" {
+			return dbgen.AssetNode{}, errors.New("asset name conflicts with existing folder item")
+		}
+		if existingByName.TargetRef.Valid && existingByName.TargetRef.String != resolvedTargetRef {
+			return dbgen.AssetNode{}, errors.New("asset name conflicts with existing target reference")
+		}
+		if !existingByName.TargetRef.Valid {
+			if err := queries.UpdateAssetTargetRef(r.Context(), dbgen.UpdateAssetTargetRefParams{ID: existingByName.ID, TargetRef: sql.NullString{String: resolvedTargetRef, Valid: true}, UpdatedAt: time.Now().UTC()}); err != nil {
+				return dbgen.AssetNode{}, err
+			}
+			existingByName.TargetRef = sql.NullString{String: resolvedTargetRef, Valid: true}
+		}
+		return existingByName, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return dbgen.AssetNode{}, err
+	}
+
+	now := time.Now().UTC()
+	return queries.CreateAssetNode(r.Context(), dbgen.CreateAssetNodeParams{
+		ID:           uuid.NewString(),
+		ProjectID:    projectID,
+		ParentID:     parentID,
+		NodeType:     "scan_target",
+		Name:         name,
+		Path:         childPath(parentPath, name),
+		TargetRef:    sql.NullString{String: resolvedTargetRef, Valid: true},
+		MetadataJson: mustJSON(map[string]any{"source": "import_upload", "scanner": trivyScanner, "report_kind": trivyReportKind}),
+		SortOrder:    0,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	})
 }
 
@@ -382,7 +508,7 @@ func createFailedImportAttempt(w http.ResponseWriter, r *http.Request, deps Depe
 	attempt, err := dbgen.New(deps.DB).CreateImportAttempt(r.Context(), dbgen.CreateImportAttemptParams{
 		ID:                    uuid.NewString(),
 		ProjectID:             projectID,
-		AssetNodeID:           sql.NullString{String: scanTargetID, Valid: true},
+		AssetNodeID:           sql.NullString{String: scanTargetID, Valid: scanTargetID != ""},
 		UploaderPrincipalType: sql.NullString{String: actor.PrincipalType, Valid: true},
 		UploaderPrincipalID:   sql.NullString{String: actor.PrincipalID, Valid: true},
 		Status:                "failed",

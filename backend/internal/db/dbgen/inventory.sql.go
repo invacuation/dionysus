@@ -331,6 +331,63 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 	return i, err
 }
 
+const getProjectAssetByParentAndName = `-- name: GetProjectAssetByParentAndName :one
+SELECT
+    id,
+    project_id,
+    parent_id,
+    node_type,
+    name,
+    path,
+    target_ref,
+    metadata_json,
+    sla_tracking_enabled,
+    sla_reporting_enabled,
+    grace_period_enabled,
+    grace_period_percent,
+    sort_order,
+    created_at,
+    updated_at
+FROM asset_nodes
+WHERE
+    project_id = ?1
+    AND name = ?2
+    AND (
+        parent_id = ?3
+        OR (parent_id IS NULL AND ?3 IS NULL)
+    )
+LIMIT 1
+`
+
+type GetProjectAssetByParentAndNameParams struct {
+	ProjectID string
+	Name      string
+	ParentID  sql.NullString
+}
+
+func (q *Queries) GetProjectAssetByParentAndName(ctx context.Context, arg GetProjectAssetByParentAndNameParams) (AssetNode, error) {
+	row := q.db.QueryRowContext(ctx, getProjectAssetByParentAndName, arg.ProjectID, arg.Name, arg.ParentID)
+	var i AssetNode
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ParentID,
+		&i.NodeType,
+		&i.Name,
+		&i.Path,
+		&i.TargetRef,
+		&i.MetadataJson,
+		&i.SlaTrackingEnabled,
+		&i.SlaReportingEnabled,
+		&i.GracePeriodEnabled,
+		&i.GracePeriodPercent,
+		&i.SortOrder,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getProjectAssetByPath = `-- name: GetProjectAssetByPath :one
 SELECT
     id,
@@ -427,6 +484,70 @@ func (q *Queries) GetProjectIdentityConflict(ctx context.Context, arg GetProject
 		&i.MediumSlaDays,
 		&i.LowSlaDays,
 		&i.UnknownSlaDays,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProjectTargetByParentAndTargetRef = `-- name: GetProjectTargetByParentAndTargetRef :one
+SELECT
+    id,
+    project_id,
+    parent_id,
+    node_type,
+    name,
+    path,
+    target_ref,
+    metadata_json,
+    sla_tracking_enabled,
+    sla_reporting_enabled,
+    grace_period_enabled,
+    grace_period_percent,
+    sort_order,
+    created_at,
+    updated_at
+FROM asset_nodes
+WHERE
+    project_id = ?1
+    AND node_type = ?2
+    AND target_ref = ?3
+    AND (
+        parent_id = ?4
+        OR (parent_id IS NULL AND ?4 IS NULL)
+    )
+LIMIT 1
+`
+
+type GetProjectTargetByParentAndTargetRefParams struct {
+	ProjectID string
+	NodeType  string
+	TargetRef sql.NullString
+	ParentID  sql.NullString
+}
+
+func (q *Queries) GetProjectTargetByParentAndTargetRef(ctx context.Context, arg GetProjectTargetByParentAndTargetRefParams) (AssetNode, error) {
+	row := q.db.QueryRowContext(ctx, getProjectTargetByParentAndTargetRef,
+		arg.ProjectID,
+		arg.NodeType,
+		arg.TargetRef,
+		arg.ParentID,
+	)
+	var i AssetNode
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ParentID,
+		&i.NodeType,
+		&i.Name,
+		&i.Path,
+		&i.TargetRef,
+		&i.MetadataJson,
+		&i.SlaTrackingEnabled,
+		&i.SlaReportingEnabled,
+		&i.GracePeriodEnabled,
+		&i.GracePeriodPercent,
+		&i.SortOrder,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -714,6 +835,25 @@ type UpdateAssetPathParams struct {
 
 func (q *Queries) UpdateAssetPath(ctx context.Context, arg UpdateAssetPathParams) error {
 	_, err := q.db.ExecContext(ctx, updateAssetPath, arg.Path, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateAssetTargetRef = `-- name: UpdateAssetTargetRef :exec
+UPDATE asset_nodes
+SET
+    target_ref = ?,
+    updated_at = ?
+WHERE id = ?
+`
+
+type UpdateAssetTargetRefParams struct {
+	TargetRef sql.NullString
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) UpdateAssetTargetRef(ctx context.Context, arg UpdateAssetTargetRefParams) error {
+	_, err := q.db.ExecContext(ctx, updateAssetTargetRef, arg.TargetRef, arg.UpdatedAt, arg.ID)
 	return err
 }
 

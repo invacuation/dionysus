@@ -68,6 +68,93 @@ func TestTrivyImportPersistsScanFindingsAndAudit(t *testing.T) {
 	assertAuditEvent(t, conn, "import.trivy.success", targetID, `"finding_count":2`)
 }
 
+func TestTrivyImportAcceptsFolderAssetDetailsAndReusesAsset(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, _ := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+
+	firstResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "folder_id": "asset-images", "asset_name": "Production Image", "scan_started_at": "2026-05-07T09:30:00+00:00"}, trivyFixture(t))
+	secondResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "folder_id": "asset-images", "asset_name": "Detected Image Rename Should Not Duplicate", "scan_started_at": "2026-05-07T09:30:00+00:00"}, trivyFixture(t))
+
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d; body = %s", firstResponse.Code, http.StatusOK, firstResponse.Body.String())
+	}
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("second status = %d, want %d; body = %s", secondResponse.Code, http.StatusOK, secondResponse.Body.String())
+	}
+	var firstBody, secondBody trivyImportResponse
+	if err := json.NewDecoder(firstResponse.Body).Decode(&firstBody); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+	if err := json.NewDecoder(secondResponse.Body).Decode(&secondBody); err != nil {
+		t.Fatalf("decode second response: %v", err)
+	}
+	if secondBody.ScanTargetID != firstBody.ScanTargetID {
+		t.Fatalf("scan target was not reused: first = %q, second = %q", firstBody.ScanTargetID, secondBody.ScanTargetID)
+	}
+	assertTableCount(t, conn, "scans", 2)
+	var name, path, targetRef string
+	if err := conn.QueryRowContext(t.Context(), "SELECT name, path, target_ref FROM asset_nodes WHERE id = ?", firstBody.ScanTargetID).Scan(&name, &path, &targetRef); err != nil {
+		t.Fatalf("select created target: %v", err)
+	}
+	if name != "Production Image" || path != "images/Production Image" || targetRef != "registry.example.test/dionysus/api:2026.05.07" {
+		t.Fatalf("created target = name %q path %q target_ref %q", name, path, targetRef)
+	}
+}
+
+func TestTrivyImportAcceptsFolderPathAndCreatesMissingFolders(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, _ := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+
+	response := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "folder_path": "releases/1.0.0/images", "asset_name": "Ubuntu image", "scan_started_at": "2026-05-07T09:30:00+00:00"}, trivyFixture(t))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body trivyImportResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var targetPath, folderPath, targetRef string
+	if err := conn.QueryRowContext(t.Context(), `SELECT target.path, folder.path, target.target_ref FROM asset_nodes AS target JOIN asset_nodes AS folder ON folder.id = target.parent_id WHERE target.id = ?`, body.ScanTargetID).Scan(&targetPath, &folderPath, &targetRef); err != nil {
+		t.Fatalf("select created target: %v", err)
+	}
+	if folderPath != "releases/1.0.0/images" || targetPath != "releases/1.0.0/images/Ubuntu image" || targetRef != "registry.example.test/dionysus/api:2026.05.07" {
+		t.Fatalf("created target path = %q folder = %q target_ref = %q", targetPath, folderPath, targetRef)
+	}
+}
+
+func TestTrivyImportAcceptsBlankFolderPathAsProjectRoot(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, _ := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+
+	response := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "folder_path": " ", "asset_name": "Root Image", "scan_started_at": "2026-05-07T09:30:00+00:00"}, trivyFixture(t))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body trivyImportResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var path, targetRef string
+	var parentID *string
+	if err := conn.QueryRowContext(t.Context(), "SELECT parent_id, path, target_ref FROM asset_nodes WHERE id = ?", body.ScanTargetID).Scan(&parentID, &path, &targetRef); err != nil {
+		t.Fatalf("select created target: %v", err)
+	}
+	if parentID != nil || path != "Root Image" || targetRef != "registry.example.test/dionysus/api:2026.05.07" {
+		t.Fatalf("created target parent = %#v path = %q target_ref = %q", parentID, path, targetRef)
+	}
+}
+
 func TestTrivyImportInvalidJSONRecordsFailedAttempt(t *testing.T) {
 	conn := openSessionHTTPTestDB(t)
 	now := time.Now().UTC()
