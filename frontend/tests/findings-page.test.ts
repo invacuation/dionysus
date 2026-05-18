@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import {
+  defaultFindingPagination,
   defaultFindingFilters,
   filterScopeAssets,
   filterScopeProjects,
@@ -50,16 +51,20 @@ function asset(overrides: Partial<Asset>): Asset {
 }
 
 describe("findingParams", () => {
-  test("adds selected project and asset scope to normal filters", () => {
+  test("adds selected project, asset, and pagination scope to normal filters", () => {
     const projectScope: FindingInventoryScope = { assetId: "", projectId: "project-1" }
     const assetScope: FindingInventoryScope = { assetId: "asset-1", projectId: "project-1" }
 
-    expect(findingParams(defaultFindingFilters, projectScope)).toMatchObject({
+    expect(findingParams(defaultFindingFilters, projectScope, defaultFindingPagination)).toMatchObject({
       project_id: "project-1",
+      page: 1,
+      page_size: 50,
     })
-    expect(findingParams(defaultFindingFilters, assetScope)).toMatchObject({
+    expect(findingParams(defaultFindingFilters, assetScope, { page: 3, pageSize: 25 })).toMatchObject({
       asset_id: "asset-1",
       project_id: "project-1",
+      page: 3,
+      page_size: 25,
     })
   })
 })
@@ -252,11 +257,11 @@ describe("finding inventory tree helpers", () => {
 
 describe("findings page labels", () => {
   test("uses uncapitalized findings count copy for the entire inventory", () => {
-    expect(resultLabel(false, 1, "the entire inventory")).toBe(
-      "1 finding in the entire inventory",
+    expect(resultLabel(false, 1, 1, 1, "the entire inventory")).toBe(
+      "Showing 1-1 of 1 finding in the entire inventory",
     )
-    expect(resultLabel(false, 2, "the entire inventory")).toBe(
-      "2 findings in the entire inventory",
+    expect(resultLabel(false, 2, 50, 75, "the entire inventory")).toBe(
+      "Showing 51-75 of 75 findings in the entire inventory",
     )
   })
 

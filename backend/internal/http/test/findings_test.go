@@ -33,6 +33,9 @@ func TestFindingsListReturnsImportedTrivyRows(t *testing.T) {
 	if len(body.Rows) != 2 {
 		t.Fatalf("row count = %d, want 2", len(body.Rows))
 	}
+	if body.Total != 2 || body.Page != 1 || body.PageSize != 50 {
+		t.Fatalf("pagination metadata = total %d page %d page_size %d, want 2/1/50", body.Total, body.Page, body.PageSize)
+	}
 	row := body.Rows[0]
 	if row.ProjectID != projectID || row.ProjectName != "Alpha" || row.ScanTargetID != targetID || row.ScanTargetName != "Production Image" {
 		t.Fatalf("row context = %#v", row)
@@ -45,6 +48,54 @@ func TestFindingsListReturnsImportedTrivyRows(t *testing.T) {
 	}
 	if row.CVSS["nvd"] == nil || len(row.AdditionalIdentifiers) != 3 || !row.SLAActive || row.SLAStatus != "active" {
 		t.Fatalf("derived fields = %#v", row)
+	}
+}
+
+func TestFindingsListPaginatesVisibleSortedRows(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+
+	response := authedProjectRequest(t, router, loginResponse, http.MethodGet, "/api/findings?project_id="+projectID+"&sort=package&direction=asc&page=2&page_size=1", "")
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body findingListResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Total != 2 || body.Page != 2 || body.PageSize != 1 {
+		t.Fatalf("pagination metadata = total %d page %d page_size %d, want 2/2/1", body.Total, body.Page, body.PageSize)
+	}
+	if len(body.Rows) != 1 {
+		t.Fatalf("row count = %d, want 1", len(body.Rows))
+	}
+	if body.Rows[0].PackageName == nil || *body.Rows[0].PackageName != "requests" {
+		t.Fatalf("page row package = %#v, want requests", body.Rows[0].PackageName)
+	}
+}
+
+func TestFindingsListRejectsInvalidPagination(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+
+	invalidPage := authedProjectRequest(t, router, loginResponse, http.MethodGet, "/api/findings?page=0", "")
+	invalidPageSize := authedProjectRequest(t, router, loginResponse, http.MethodGet, "/api/findings?page_size=0", "")
+
+	if invalidPage.Code != http.StatusBadRequest {
+		t.Fatalf("invalid page status = %d, want %d; body = %s", invalidPage.Code, http.StatusBadRequest, invalidPage.Body.String())
+	}
+	if invalidPageSize.Code != http.StatusBadRequest {
+		t.Fatalf("invalid page size status = %d, want %d; body = %s", invalidPageSize.Code, http.StatusBadRequest, invalidPageSize.Body.String())
 	}
 }
 

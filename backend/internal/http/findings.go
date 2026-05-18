@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,7 +42,10 @@ var findingSortKeys = map[string]bool{
 }
 
 type findingListResponse struct {
-	Rows []findingRowResponse `json:"rows"`
+	Rows     []findingRowResponse `json:"rows"`
+	Total    int                  `json:"total"`
+	Page     int                  `json:"page"`
+	PageSize int                  `json:"page_size"`
 }
 
 type findingRowResponse struct {
@@ -163,6 +167,8 @@ type findingFilters struct {
 	FixAvailable        *bool
 	Sort                string
 	Direction           string
+	Page                int
+	PageSize            int
 }
 
 func mountFindingRoutes(router chi.Router, settings config.Settings, deps Dependencies) {
@@ -230,8 +236,10 @@ func listFindings(w http.ResponseWriter, r *http.Request, settings config.Settin
 		visible = append(visible, row)
 	}
 	sortFindingRows(visible, filters.Sort, filters.Direction)
-	responses := make([]findingRowResponse, 0, len(visible))
-	for _, row := range visible {
+	total := len(visible)
+	pageRows := paginatedFindingRows(visible, filters.Page, filters.PageSize)
+	responses := make([]findingRowResponse, 0, len(pageRows))
+	for _, row := range pageRows {
 		response, err := findingRowResponseFromDB(row)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Internal Server Error")
@@ -239,7 +247,12 @@ func listFindings(w http.ResponseWriter, r *http.Request, settings config.Settin
 		}
 		responses = append(responses, response)
 	}
-	writeJSON(w, http.StatusOK, findingListResponse{Rows: responses})
+	writeJSON(w, http.StatusOK, findingListResponse{
+		Rows:     responses,
+		Total:    total,
+		Page:     filters.Page,
+		PageSize: filters.PageSize,
+	})
 }
 
 func getFindingDetail(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
@@ -960,6 +973,18 @@ func parseFindingFilters(w http.ResponseWriter, r *http.Request) (findingFilters
 	if !ok {
 		return findingFilters{}, false
 	}
+	page, ok := parsePositiveFindingInt(w, query.Get("page"), "page", 1)
+	if !ok {
+		return findingFilters{}, false
+	}
+	pageSize, ok := parsePositiveFindingInt(w, query.Get("page_size"), "page_size", 50)
+	if !ok {
+		return findingFilters{}, false
+	}
+	if pageSize > 200 {
+		writeError(w, http.StatusBadRequest, "page_size must be 200 or less")
+		return findingFilters{}, false
+	}
 	return findingFilters{
 		ProjectID:           strings.TrimSpace(query.Get("project_id")),
 		ScanTargetID:        strings.TrimSpace(query.Get("scan_target_id")),
@@ -973,7 +998,22 @@ func parseFindingFilters(w http.ResponseWriter, r *http.Request) (findingFilters
 		FixAvailable:        fixAvailable,
 		Sort:                sortKey,
 		Direction:           direction,
+		Page:                page,
+		PageSize:            pageSize,
 	}, true
+}
+
+func parsePositiveFindingInt(w http.ResponseWriter, raw string, field string, defaultValue int) (int, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultValue, true
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		writeError(w, http.StatusBadRequest, field+" must be a positive integer")
+		return 0, false
+	}
+	return value, true
 }
 
 func parseOptionalFindingBool(w http.ResponseWriter, raw string, field string) (*bool, bool) {
@@ -1093,6 +1133,18 @@ func sortFindingRows(rows []dbgen.ListFindingRowsRow, key string, direction stri
 		}
 		return cmp < 0
 	})
+}
+
+func paginatedFindingRows(rows []dbgen.ListFindingRowsRow, page int, pageSize int) []dbgen.ListFindingRowsRow {
+	start := (page - 1) * pageSize
+	if start >= len(rows) {
+		return []dbgen.ListFindingRowsRow{}
+	}
+	end := start + pageSize
+	if end > len(rows) {
+		end = len(rows)
+	}
+	return rows[start:end]
 }
 
 func compareFindingRows(left dbgen.ListFindingRowsRow, right dbgen.ListFindingRowsRow, key string, direction string) int {
