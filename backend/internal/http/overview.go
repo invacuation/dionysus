@@ -44,13 +44,14 @@ func handleOverview(w http.ResponseWriter, r *http.Request, settings config.Sett
 
 	rows, err := dbgen.New(deps.DB).ListFindingRows(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		writeError(w, http.StatusInternalServerError, "Unable to load overview data!")
 		return
 	}
 
 	response := overviewFromFindingRows(rows)
 	writeJSON(w, http.StatusOK, response)
 }
+
 
 func overviewFromFindingRows(rows []dbgen.ListFindingRowsRow) overviewResponse {
 	severityCounts := map[string]int{}

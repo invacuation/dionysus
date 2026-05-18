@@ -54,6 +54,8 @@ func mountAuthRoutes(router chi.Router, settings config.Settings, deps Dependenc
 	})
 }
 
+// Create a new browser session for a user.
+// This is used for local authentication.
 func createBrowserSession(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if deps.DB == nil {
 		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
@@ -137,6 +139,8 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 	})
 }
 
+// Delete a browser session.
+// This is used for local authentication.
 func deleteBrowserSession(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if deps.DB == nil {
 		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
@@ -190,12 +194,16 @@ func deleteBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Returns information on the current principal if authenticated.
 func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if deps.DB == nil {
 		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
 		return
 	}
 
+	// As this endpoint authenticates either a bearer token or a session cookie,
+	// we pass both types of credentials to the identity package and let it resolve which one to use (if any).
+	// By default, if both types of credentials are present and valid, the session cookie is preferred over the bearer token.
 	bearerToken := identity.ParseBearerAuthorization(r.Header.Get("Authorization"))
 	var sessionToken *string
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
@@ -233,6 +241,8 @@ func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Set
 	})
 }
 
+// Change the current user's password.
+// This is used for local authentication.
 func changeCurrentUserPassword(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if deps.DB == nil {
 		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
@@ -281,6 +291,7 @@ func changeCurrentUserPassword(w http.ResponseWriter, r *http.Request, settings 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Returns the user of the current session.
 func authenticatedActorFromRequest(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) (*identity.AuthenticatedActor, bool) {
 	bearerToken := identity.ParseBearerAuthorization(r.Header.Get("Authorization"))
 	var sessionToken *string

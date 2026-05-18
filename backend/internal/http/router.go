@@ -20,15 +20,23 @@ func WithDB(conn *sql.DB) Option {
 	}
 }
 
+// Creates a new HTTP Router, mounting all of the routes needed for the application
+// to work.
 func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	deps := Dependencies{}
 	for _, option := range options {
 		option(&deps)
 	}
 
+	// Set up the new router
 	router := chi.NewRouter()
+
+	// Set the max request body size. This is primarily to prevent users from uploading huge reports
 	router.Use(RequestBodyLimit(settings.MaxReportUploadBytes))
+
+	// The healthcheck endpoint
 	router.Get("/healthz", healthz)
+
 	mountAuthRoutes(router, settings, deps)
 	mountAccessRoutes(router, settings, deps)
 	mountAdminSessionRoutes(router, settings, deps)
@@ -42,5 +50,6 @@ func NewRouter(settings config.Settings, options ...Option) http.Handler {
 	mountSecuritySettingsRoutes(router, settings, deps)
 	mountOAuthRoutes(router, settings, deps)
 	mountFrontend(router, settings.FrontendDist)
+
 	return router
 }

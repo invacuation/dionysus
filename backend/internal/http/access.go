@@ -15,24 +15,25 @@ import (
 	"github.com/invacuation/dionysus/backend/internal/identity"
 )
 
+// List of all permissions used by the application.
 var knownPermissions = []string{
 	"access:manage",
-	"admin:*",
-	"asset:create",
-	"asset:delete",
-	"asset:update",
-	"credential:manage",
-	"finding:comment",
-	"finding:status_change:approve",
-	"finding:status_change:request",
-	"finding:view",
-	"import:history:view",
-	"import:upload",
-	"project:create",
-	"project:delete",
-	"project:update",
-	"project:view",
-	"report:view",
+	"admin:*",                       // Wildcard for administrator permissions - this needs to be made more granular in the future
+	"asset:create",                  // Create assets
+	"asset:delete",                  // Delete assets
+	"asset:update",                  // Update assets
+	"credential:manage",             // Manage credentials
+	"finding:comment",               // Comment on findings
+	"finding:status_change:approve", // Approve status changes on findings
+	"finding:status_change:request", // Request status changes on findings
+	"finding:view",                  // View findings
+	"import:history:view",           // View import history
+	"import:upload",                 // Upload imports
+	"project:create",                // Create projects
+	"project:delete",                // Delete projects
+	"project:update",                // Update projects
+	"project:view",                  // View projects
+	"report:view",                   // View reports
 }
 
 type protectedAccessGroup struct {
@@ -41,6 +42,8 @@ type protectedAccessGroup struct {
 	Permissions []string
 }
 
+// Define the list of groups that come with the application by default.
+// These groups are protected and cannot be deleted or renamed, and their permissions are automatically ensured on application startup.
 var protectedAccessGroups = []protectedAccessGroup{
 	{
 		Name:        "administrators",
@@ -164,23 +167,36 @@ func mountAccessRoutes(router chi.Router, settings config.Settings, deps Depende
 	router.Get("/api/admin/access", func(w http.ResponseWriter, r *http.Request) {
 		listAccessManagement(w, r, settings, deps)
 	})
+
+	// This endpoint is used to allow an admin to create a new group
 	router.Post("/api/admin/access/groups", func(w http.ResponseWriter, r *http.Request) {
 		createAccessGroup(w, r, settings, deps)
 	})
+
+	// This endpoint is used to allow an admin to add a principal to a group
 	router.Post("/api/admin/access/memberships", func(w http.ResponseWriter, r *http.Request) {
 		createAccessMembership(w, r, settings, deps)
 	})
+
+	// This endpoint is used to allow an admin to assign permissions to a principal
 	router.Post("/api/admin/access/permissions", func(w http.ResponseWriter, r *http.Request) {
 		assignAccessPermission(w, r, settings, deps)
 	})
+
+	// This endpoint is used to allow an admin to create a new user account for local authentication
 	router.Post("/api/admin/access/users", func(w http.ResponseWriter, r *http.Request) {
 		createAccessUser(w, r, settings, deps)
 	})
+
+	// This endpoint is used to allow an admin to set a new password for a user account
 	router.Patch("/api/admin/access/users/{userID}/password", func(w http.ResponseWriter, r *http.Request) {
 		setAccessUserPassword(w, r, settings, deps)
 	})
 }
 
+// This method requires the "access:manage" permission.
+// This method returns all users, machine credentials, groups, group memberships, and permission assignments in the system,
+// which is used by the frontend to display access management information and interfaces.
 func listAccessManagement(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "access:manage"}); !ok {
 		return

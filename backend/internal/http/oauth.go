@@ -36,6 +36,8 @@ func mountOAuthRoutes(router chi.Router, settings config.Settings, deps Dependen
 	})
 }
 
+// Create a new machine token, given a valid client ID and secret.
+// This is used for machine-to-machine authentication.
 func createMachineToken(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if deps.DB == nil {
 		writeError(w, http.StatusServiceUnavailable, "Database unavailable")
@@ -58,7 +60,7 @@ func createMachineToken(w http.ResponseWriter, r *http.Request, settings config.
 		RefreshExpiresInMinutes: settings.MachineRefreshTokenExpiresMinutes,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		writeError(w, http.StatusInternalServerError, "Unable to create machine token!")
 		return
 	}
 	if tokenPair == nil {
@@ -78,6 +80,7 @@ func createMachineToken(w http.ResponseWriter, r *http.Request, settings config.
 	})
 }
 
+// This method retrieves token request (i.e. client ID and secret) from either a JSON body or form values, depending on the Content-Type header of the request.
 func tokenRequestFromRequest(w http.ResponseWriter, r *http.Request) (tokenRequest, bool) {
 	contentType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0]))
 	if contentType == "application/x-www-form-urlencoded" || contentType == "multipart/form-data" {
