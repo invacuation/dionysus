@@ -16,6 +16,7 @@ import (
 
 const redacted = "[REDACTED]"
 
+// Keys that should be redacted to prevent information exposure
 var sensitiveKeys = map[string]bool{
 	"authorization": true,
 	"client_secret": true,
@@ -26,6 +27,7 @@ var sensitiveKeys = map[string]bool{
 	"refresh_token": true,
 }
 
+// Keys with larger-sized values that should be redacted/removed entirely to prevent information exposure
 var largeSensitiveKeys = map[string]bool{
 	"raw_report":     true,
 	"report":         true,

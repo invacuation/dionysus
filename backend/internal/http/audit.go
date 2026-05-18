@@ -41,6 +41,8 @@ func mountAuditRoutes(router chi.Router, settings config.Settings, deps Dependen
 	})
 }
 
+// Retrieve the current audit log (with optional filtering for project, event type, timerange).
+// Users must have the "audit_log:view" permission to access this endpoint.
 func listAuditLog(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
 	if _, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "audit_log:view"}); !ok {
 		return
