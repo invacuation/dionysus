@@ -170,6 +170,29 @@ func matchingAssignments(
 	return assignments, nil
 }
 
+func scopedAssignments(
+	ctx context.Context,
+	queries *dbgen.Queries,
+	refs []principalRef,
+	permission string,
+	scopeType string,
+) ([]dbgen.PermissionAssignment, error) {
+	var assignments []dbgen.PermissionAssignment
+	for _, ref := range refs {
+		matches, err := queries.ListScopedAssignmentsForPrincipal(ctx, dbgen.ListScopedAssignmentsForPrincipalParams{
+			PrincipalType: ref.typ,
+			PrincipalID:   ref.id,
+			Permission:    permission,
+			ScopeType:     scopeType,
+		})
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, matches...)
+	}
+	return assignments, nil
+}
+
 func validateScopePair(scopeType *string, scopeID *string) error {
 	if (scopeType == nil) != (scopeID == nil) {
 		return errors.New("scope_type and scope_id must both be set or both be nil")

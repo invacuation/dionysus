@@ -201,6 +201,51 @@ func openOAuthTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE group_memberships (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			group_id VARCHAR NOT NULL,
+			principal_type VARCHAR(20) NOT NULL,
+			principal_id VARCHAR(36) NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE groups (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			name VARCHAR(150) NOT NULL UNIQUE,
+			display_name VARCHAR(200) NOT NULL,
+			is_protected BOOLEAN NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE permission_assignments (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			principal_type VARCHAR(20) NOT NULL,
+			principal_id VARCHAR(36) NOT NULL,
+			permission VARCHAR(120) NOT NULL,
+			effect VARCHAR(20) NOT NULL,
+			scope_type VARCHAR(50),
+			scope_id VARCHAR(36),
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE TABLE projects (
+			id VARCHAR PRIMARY KEY NOT NULL,
+			slug VARCHAR(150) NOT NULL UNIQUE,
+			name VARCHAR(200) NOT NULL,
+			description TEXT,
+			sla_tracking_enabled BOOLEAN NOT NULL,
+			sla_reporting_enabled BOOLEAN NOT NULL,
+			grace_period_enabled BOOLEAN NOT NULL,
+			grace_period_percent INTEGER NOT NULL,
+			require_peer_review_for_status_changes BOOLEAN NOT NULL DEFAULT false,
+			critical_sla_days INTEGER NOT NULL DEFAULT 30,
+			high_sla_days INTEGER NOT NULL DEFAULT 60,
+			medium_sla_days INTEGER NOT NULL DEFAULT 90,
+			low_sla_days INTEGER NOT NULL DEFAULT 180,
+			unknown_sla_days INTEGER NOT NULL DEFAULT 365,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := conn.ExecContext(context.Background(), statement); err != nil {

@@ -8,18 +8,42 @@ const (
 )
 
 type actorResponse struct {
-	ActorType               string  `json:"actor_type"`
-	ActorID                 string  `json:"actor_id"`
-	DisplayName             string  `json:"display_name"`
-	PrincipalType           string  `json:"principal_type"`
-	PrincipalID             string  `json:"principal_id"`
-	AuthMethod              string  `json:"auth_method"`
-	SessionID               *string `json:"session_id"`
-	MachineTokenID          *string `json:"machine_token_id"`
-	MixedCredentialsPresent bool    `json:"mixed_credentials_present"`
-	BearerTokenPresent      bool    `json:"bearer_token_present"`
-	SessionCookiePresent    bool    `json:"session_cookie_present"`
-	LocalAuthEnabled        bool    `json:"local_auth_enabled"`
+	ActorType               string                    `json:"actor_type"`
+	ActorID                 string                    `json:"actor_id"`
+	DisplayName             string                    `json:"display_name"`
+	PrincipalType           string                    `json:"principal_type"`
+	PrincipalID             string                    `json:"principal_id"`
+	AuthMethod              string                    `json:"auth_method"`
+	SessionID               *string                   `json:"session_id"`
+	MachineTokenID          *string                   `json:"machine_token_id"`
+	MixedCredentialsPresent bool                      `json:"mixed_credentials_present"`
+	BearerTokenPresent      bool                      `json:"bearer_token_present"`
+	SessionCookiePresent    bool                      `json:"session_cookie_present"`
+	LocalAuthEnabled        bool                      `json:"local_auth_enabled"`
+	Capabilities            actorCapabilitiesResponse `json:"capabilities"`
+}
+
+type actorCapabilitiesResponse struct {
+	Navigation actorNavigationCapabilitiesResponse `json:"navigation"`
+	Admin      actorAdminCapabilitiesResponse      `json:"admin"`
+}
+
+type actorNavigationCapabilitiesResponse struct {
+	Overview  bool `json:"overview"`
+	Findings  bool `json:"findings"`
+	Inventory bool `json:"inventory"`
+	Imports   bool `json:"imports"`
+	Admin     bool `json:"admin"`
+}
+
+type actorAdminCapabilitiesResponse struct {
+	Access             bool `json:"access"`
+	AuditLog           bool `json:"audit_log"`
+	ImportHistory      bool `json:"import_history"`
+	MachineCredentials bool `json:"machine_credentials"`
+	PermissionTester   bool `json:"permission_tester"`
+	Sessions           bool `json:"sessions"`
+	SecuritySettings   bool `json:"security_settings"`
 }
 
 type tokenResponse struct {

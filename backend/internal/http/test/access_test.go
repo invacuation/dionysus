@@ -77,7 +77,7 @@ func TestAccessListReturnsSafeAccessManagementData(t *testing.T) {
 	for _, group := range body.Groups {
 		groupNames[group.Name] = true
 	}
-	for _, name := range []string{"administrators", "operators", "security-reviewers", "users"} {
+	for _, name := range []string{"administrators", "auditors", "importers", "operators", "security-reviewers", "users"} {
 		if !groupNames[name] {
 			t.Fatalf("groups = %#v, want %s", body.Groups, name)
 		}
@@ -93,6 +93,15 @@ func TestAccessListReturnsSafeAccessManagementData(t *testing.T) {
 	}
 	if !hasAccessManage {
 		t.Fatalf("permission assignments = %#v, want access:manage", body.PermissionAssignments)
+	}
+	protectedPermissions := map[string]bool{}
+	for _, assignment := range body.PermissionAssignments {
+		protectedPermissions[assignment.Permission] = true
+	}
+	for _, permission := range []string{"audit_log:view", "import:upload"} {
+		if !protectedPermissions[permission] {
+			t.Fatalf("permission assignments = %#v, want protected %s assignment", body.PermissionAssignments, permission)
+		}
 	}
 	if len(body.AvailablePermissions) == 0 {
 		t.Fatal("available permissions is empty")

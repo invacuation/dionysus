@@ -36,6 +36,7 @@ import {
   setAccessUserPassword,
   testPermission,
   updateSecuritySettings,
+  type ActorAdminCapabilities,
   type AccessListResponse,
   type AccessPrincipalType,
   type AdminImportAttempt,
@@ -159,7 +160,39 @@ const defaultAccessPermissionForm: AccessPermissionForm = {
 const defaultAccessPasswordForm: AccessPasswordForm = { userId: "", newPassword: "" }
 const defaultAccessUserForm: AccessUserForm = { username: "", displayName: "", password: "" }
 
-export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: boolean }) {
+const adminTabs = [
+  { id: "audit-log" as const, label: "Audit Log", capability: "audit_log" as const },
+  { id: "access" as const, label: "Access", capability: "access" as const },
+  { id: "import-history" as const, label: "Import History", capability: "import_history" as const },
+  {
+    id: "machine-credentials" as const,
+    label: "Machine Credentials",
+    capability: "machine_credentials" as const,
+  },
+  { id: "sessions" as const, label: "Sessions", capability: "sessions" as const },
+  {
+    id: "security-settings" as const,
+    label: "Security Settings",
+    capability: "security_settings" as const,
+  },
+  {
+    id: "permission-tester" as const,
+    label: "Permission Tester",
+    capability: "permission_tester" as const,
+  },
+]
+
+export function visibleAdminTabsForCapabilities(capabilities: ActorAdminCapabilities) {
+  return adminTabs.filter((tab) => capabilities[tab.capability])
+}
+
+export function AdminPage({
+  adminCapabilities,
+  localAuthEnabled = true,
+}: {
+  adminCapabilities: ActorAdminCapabilities
+  localAuthEnabled?: boolean
+}) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<AdminTab>("audit-log")
   const [draftFilters, setDraftFilters] = useState<AuditLogFilters>(defaultFilters)
@@ -168,40 +201,57 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
   const [secretPanel, setSecretPanel] = useState<SecretPanelState | null>(null)
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle")
   const params = useMemo(() => auditLogParams(appliedFilters), [appliedFilters])
+  const visibleTabs = useMemo(
+    () => visibleAdminTabsForCapabilities(adminCapabilities),
+    [adminCapabilities],
+  )
+
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id)
+    }
+  }, [activeTab, visibleTabs])
 
   const auditLogQuery = useQuery({
     queryKey: ["audit-log", params],
     queryFn: () => listAuditLog(params),
+    enabled: adminCapabilities.audit_log,
   })
 
   const accessQuery = useQuery({
     queryKey: ["access-management"],
     queryFn: listAccessManagement,
+    enabled: adminCapabilities.access,
   })
 
   const machineCredentialsQuery = useQuery({
     queryKey: ["machine-credentials"],
     queryFn: listMachineCredentials,
+    enabled: adminCapabilities.machine_credentials,
   })
 
   const userSessionsQuery = useQuery({
     queryKey: ["user-sessions"],
     queryFn: listUserSessions,
+    enabled: adminCapabilities.sessions,
   })
 
   const importHistoryQuery = useQuery({
     queryKey: ["admin-import-history"],
     queryFn: () => listAdminImportHistory({ limit: 50 }),
+    enabled: adminCapabilities.import_history,
   })
 
   const securitySettingsQuery = useQuery({
     queryKey: ["security-settings"],
     queryFn: getSecuritySettings,
+    enabled: adminCapabilities.security_settings,
   })
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: listProjects,
+    enabled: adminCapabilities.access || adminCapabilities.permission_tester,
   })
 
   const invalidateAdminQueries = async () => {
@@ -321,42 +371,20 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
       </header>
 
       <div className="inline-flex rounded-md border bg-card p-1">
-        <TabButton active={activeTab === "audit-log"} onClick={() => setActiveTab("audit-log")}>
-          Audit Log
-        </TabButton>
-        <TabButton active={activeTab === "access"} onClick={() => setActiveTab("access")}>
-          Access
-        </TabButton>
-        <TabButton
-          active={activeTab === "import-history"}
-          onClick={() => setActiveTab("import-history")}
-        >
-          Import History
-        </TabButton>
-        <TabButton
-          active={activeTab === "machine-credentials"}
-          onClick={() => setActiveTab("machine-credentials")}
-        >
-          Machine Credentials
-        </TabButton>
-        <TabButton active={activeTab === "sessions"} onClick={() => setActiveTab("sessions")}>
-          Sessions
-        </TabButton>
-        <TabButton
-          active={activeTab === "security-settings"}
-          onClick={() => setActiveTab("security-settings")}
-        >
-          Security Settings
-        </TabButton>
-        <TabButton
-          active={activeTab === "permission-tester"}
-          onClick={() => setActiveTab("permission-tester")}
-        >
-          Permission Tester
-        </TabButton>
+        {visibleTabs.map((tab) => (
+          <TabButton
+            active={activeTab === tab.id}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </TabButton>
+        ))}
       </div>
 
-      {activeTab === "audit-log" ? (
+      {visibleTabs.length === 0 ? (
+        <StateMessage label="No admin areas available." />
+      ) : activeTab === "audit-log" && adminCapabilities.audit_log ? (
         <AuditLogSection
           appliedFilters={appliedFilters}
           auditLogQuery={auditLogQuery}
@@ -366,7 +394,7 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
           setAppliedFilters={setAppliedFilters}
           setDraftFilters={setDraftFilters}
         />
-      ) : activeTab === "access" ? (
+      ) : activeTab === "access" && adminCapabilities.access ? (
         <AccessManagementSection
           access={accessQuery.data ?? null}
           error={accessQuery.error}
@@ -377,7 +405,7 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
           localAuthEnabled={localAuthEnabled}
           projects={projectsQuery.data?.projects ?? []}
         />
-      ) : activeTab === "import-history" ? (
+      ) : activeTab === "import-history" && adminCapabilities.import_history ? (
         <ImportHistorySection
           attempts={importAttempts}
           error={importHistoryQuery.error}
@@ -385,7 +413,7 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
           isLoading={importHistoryQuery.isPending}
           onRefresh={() => void importHistoryQuery.refetch()}
         />
-      ) : activeTab === "machine-credentials" ? (
+      ) : activeTab === "machine-credentials" && adminCapabilities.machine_credentials ? (
         <div className="space-y-3">
           <section className="grid gap-3 rounded-lg border bg-card p-3 lg:grid-cols-[minmax(18rem,28rem)_1fr] lg:items-end">
             <form className="flex gap-2" onSubmit={handleCreateCredential}>
@@ -460,7 +488,7 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
             </CardContent>
           </Card>
         </div>
-      ) : activeTab === "sessions" ? (
+      ) : activeTab === "sessions" && adminCapabilities.sessions ? (
         <SessionsSection
           actionSessionId={revokeSessionMutation.variables?.sessionId ?? null}
           error={userSessionsQuery.error}
@@ -471,7 +499,7 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
           onRevoke={handleRevokeSession}
           sessions={userSessions}
         />
-      ) : activeTab === "security-settings" ? (
+      ) : activeTab === "security-settings" && adminCapabilities.security_settings ? (
         <SecuritySettingsSection
           error={securitySettingsQuery.error}
           isError={securitySettingsQuery.isError}
@@ -482,11 +510,13 @@ export function AdminPage({ localAuthEnabled = true }: { localAuthEnabled?: bool
           onSave={(settings) => updateSecuritySettingsMutation.mutate(settings)}
           settings={securitySettingsQuery.data ?? null}
         />
-      ) : (
+      ) : activeTab === "permission-tester" && adminCapabilities.permission_tester ? (
         <PermissionTesterSection
           access={accessQuery.data ?? null}
           projects={projectsQuery.data?.projects ?? []}
         />
+      ) : (
+        <StateMessage label="No admin areas available." />
       )}
     </div>
   )

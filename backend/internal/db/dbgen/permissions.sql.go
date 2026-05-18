@@ -462,12 +462,14 @@ WHERE
     AND principal_id = $2
     AND permission = $3
     AND (
-        scope_type = $4
-        OR (scope_type IS NULL AND $4 IS NULL)
-    )
-    AND (
-        scope_id = $5
-        OR (scope_id IS NULL AND $5 IS NULL)
+        (
+            scope_type = $4
+            AND scope_id = $5
+        )
+        OR (
+            scope_type IS NULL
+            AND scope_id IS NULL
+        )
     )
 `
 
@@ -486,6 +488,71 @@ func (q *Queries) ListMatchingAssignmentsForPrincipal(ctx context.Context, arg L
 		arg.Permission,
 		arg.ScopeType,
 		arg.ScopeID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PermissionAssignment
+	for rows.Next() {
+		var i PermissionAssignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalType,
+			&i.PrincipalID,
+			&i.Permission,
+			&i.Effect,
+			&i.ScopeType,
+			&i.ScopeID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScopedAssignmentsForPrincipal = `-- name: ListScopedAssignmentsForPrincipal :many
+SELECT
+    id,
+    principal_type,
+    principal_id,
+    permission,
+    effect,
+    scope_type,
+    scope_id,
+    created_at,
+    updated_at
+FROM permission_assignments
+WHERE
+    principal_type = $1
+    AND principal_id = $2
+    AND permission = $3
+    AND scope_type = $4
+    AND scope_id IS NOT NULL
+`
+
+type ListScopedAssignmentsForPrincipalParams struct {
+	PrincipalType string
+	PrincipalID   string
+	Permission    string
+	ScopeType     string
+}
+
+func (q *Queries) ListScopedAssignmentsForPrincipal(ctx context.Context, arg ListScopedAssignmentsForPrincipalParams) ([]PermissionAssignment, error) {
+	rows, err := q.db.QueryContext(ctx, listScopedAssignmentsForPrincipal,
+		arg.PrincipalType,
+		arg.PrincipalID,
+		arg.Permission,
+		arg.ScopeType,
 	)
 	if err != nil {
 		return nil, err
