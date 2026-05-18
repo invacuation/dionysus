@@ -432,4 +432,18 @@ describe("inventory creation UI", () => {
     expect(source).not.toContain('<DetailRow label="Sort order">')
     expect(source).not.toContain('<label className="grid gap-1 text-xs font-medium text-muted-foreground">\n          Parent')
   })
+
+  test("opens project settings and asset details through explicit drawer buttons", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/inventory/inventory-page.tsx"),
+      "utf8",
+    )
+
+    expect(source).toContain('aria-label={`Open settings for ${project.name}`}')
+    expect(source).toContain('aria-label={`Open details for ${asset.name}`}')
+    expect(source).toContain('label="Project settings drawer"')
+    expect(source).toContain('label="Asset detail drawer"')
+    expect(source).not.toContain('<CardTitle className="text-base">Project Settings</CardTitle>')
+    expect(source).not.toContain('<CardTitle className="text-base">Asset Details</CardTitle>')
+  })
 })
