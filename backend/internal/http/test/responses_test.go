@@ -263,7 +263,10 @@ type adminImportAttemptResponse struct {
 }
 
 type findingListResponse struct {
-	Rows []findingRowResponse `json:"rows"`
+	Rows     []findingRowResponse `json:"rows"`
+	Total    int                  `json:"total"`
+	Page     int                  `json:"page"`
+	PageSize int                  `json:"page_size"`
 }
 
 type findingRowResponse struct {

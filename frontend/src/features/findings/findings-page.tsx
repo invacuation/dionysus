@@ -4,6 +4,8 @@ import {
   ArrowUp,
   ArrowUpDown,
   Box,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Folder,
   FolderTree,
@@ -91,6 +93,11 @@ type Filters = {
   direction: SortDirection
 }
 
+type FindingPagination = {
+  page: number
+  pageSize: number
+}
+
 export type FindingInventoryScope = {
   projectId: string
   assetId: string
@@ -148,6 +155,11 @@ const defaultInventoryScope: FindingInventoryScope = {
   assetId: "",
 }
 
+export const defaultFindingPagination: FindingPagination = {
+  page: 1,
+  pageSize: 50,
+}
+
 export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) {
   const [filters, setFilters] = useState<Filters>(() =>
     findingFiltersFromSearchParams(new URLSearchParams(window.location.search)),
@@ -159,11 +171,15 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
   const [projectSearch, setProjectSearch] = useState("")
   const [assetSearch, setAssetSearch] = useState("")
   const [currentFolderId, setCurrentFolderId] = useState("")
+  const [pagination, setPagination] = useState<FindingPagination>(defaultFindingPagination)
   const [drawerState, setDrawerState] = useState<FindingDrawerState>({
     selectedFindingId: null,
     isMinimized: false,
   })
-  const params = useMemo(() => findingParams(filters, inventoryScope), [filters, inventoryScope])
+  const params = useMemo(
+    () => findingParams(filters, inventoryScope, pagination),
+    [filters, inventoryScope, pagination],
+  )
   const selectedFindingId = drawerState.selectedFindingId
 
   const projectsQuery = useQuery({
@@ -194,6 +210,10 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
   })
 
   const rows = findingsQuery.data?.rows ?? []
+  const totalFindings = findingsQuery.data?.total ?? 0
+  const currentPage = findingsQuery.data?.page ?? pagination.page
+  const pageSize = findingsQuery.data?.page_size ?? pagination.pageSize
+  const totalPages = Math.max(1, Math.ceil(totalFindings / pageSize))
   const detailQuery = useQuery({
     queryKey: ["findings", selectedFindingId],
     queryFn: () => getFinding(selectedFindingId ?? ""),
@@ -203,6 +223,18 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
   useEffect(() => {
     setCurrentFolderId("")
   }, [inventoryScope.projectId])
+
+  useEffect(() => {
+    setPagination((current) =>
+      current.page === 1 ? current : { ...current, page: 1 },
+    )
+  }, [filters, inventoryScope])
+
+  useEffect(() => {
+    if (pagination.page > totalPages) {
+      setPagination((current) => ({ ...current, page: totalPages }))
+    }
+  }, [pagination.page, totalPages])
 
   useEffect(() => {
     if (currentFolderId && !assets.some((asset) => asset.id === currentFolderId)) {
@@ -235,6 +267,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
           disabled={isDefaultFilters(filters)}
           onClick={() => {
             setFilters(defaultFindingFilters)
+            setPagination((current) => ({ ...current, page: 1 }))
             setDrawerState((current) => reduceFindingDrawerState(current, "close"))
           }}
           size="sm"
@@ -275,6 +308,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
               onSearchChange={setProjectSearch}
               onSelectProject={(projectId) => {
                 setInventoryScope({ assetId: "", projectId })
+                setPagination((current) => ({ ...current, page: 1 }))
                 setAssetSearch("")
                 setCurrentFolderId("")
                 setDrawerState((current) => reduceFindingDrawerState(current, "close"))
@@ -306,6 +340,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
                 isLoading={assetsQuery.isPending && inventoryScope.projectId.length > 0}
                 onSelectAsset={(assetId) => {
                   setInventoryScope((current) => ({ ...current, assetId }))
+                  setPagination((current) => ({ ...current, page: 1 }))
                   const asset = assets.find((candidate) => candidate.id === assetId)
                   if (asset?.type === folderType) {
                     setCurrentFolderId(asset.id)
@@ -314,6 +349,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
                 }}
                 onSelectRoot={() => {
                   setInventoryScope((current) => ({ ...current, assetId: "" }))
+                  setPagination((current) => ({ ...current, page: 1 }))
                   setCurrentFolderId("")
                   setDrawerState((current) => reduceFindingDrawerState(current, "close"))
                 }}
@@ -460,9 +496,22 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
             <div>
               <h2 className="text-sm font-semibold">Findings</h2>
               <p className="text-xs text-muted-foreground">
-                {resultLabel(findingsQuery.isPending, rows.length, scopeLabel)}
+                {resultLabel(findingsQuery.isPending, currentPage, pageSize, totalFindings, scopeLabel)}
               </p>
             </div>
+            <FindingPaginationControls
+              isLoading={findingsQuery.isPending}
+              onPageChange={(page) =>
+                setPagination((current) => ({ ...current, page }))
+              }
+              onPageSizeChange={(nextPageSize) =>
+                setPagination({ page: 1, pageSize: nextPageSize })
+              }
+              page={currentPage}
+              pageSize={pageSize}
+              total={totalFindings}
+              totalPages={totalPages}
+            />
           </div>
           <CardContent className="p-0">
             <FindingsTable
@@ -504,6 +553,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
 export function findingParams(
   filters: Filters,
   inventoryScope: FindingInventoryScope = defaultInventoryScope,
+  pagination: FindingPagination = defaultFindingPagination,
 ): FindingListParams {
   const identifier = filters.identifier.trim()
   const packageName = filters.packageName.trim()
@@ -519,6 +569,8 @@ export function findingParams(
     fix_available: filters.fixAvailable === "all" ? undefined : filters.fixAvailable === "true",
     sort: filters.sort,
     direction: filters.direction,
+    page: pagination.page,
+    page_size: pagination.pageSize,
   }
 }
 
@@ -902,18 +954,23 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
 
 function Select({
   children,
+  className,
   disabled = false,
   onChange,
   value,
 }: {
   children: React.ReactNode
+  className?: string
   disabled?: boolean
   onChange: (value: string) => void
   value: string
 }) {
   return (
     <select
-      className="flex h-9 w-full min-w-0 rounded-md border bg-background px-3 py-1 text-sm shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className={cn(
+        "flex h-9 w-full min-w-0 rounded-md border bg-background px-3 py-1 text-sm shadow-xs outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        className,
+      )}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       value={value}
@@ -1071,6 +1128,65 @@ function FindingsTable({
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function FindingPaginationControls({
+  isLoading,
+  onPageChange,
+  onPageSizeChange,
+  page,
+  pageSize,
+  total,
+  totalPages,
+}: {
+  isLoading: boolean
+  onPageChange: (page: number) => void
+  onPageSizeChange: (pageSize: number) => void
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select
+        className="w-32"
+        disabled={isLoading}
+        onChange={(value) => onPageSizeChange(Number(value))}
+        value={String(pageSize)}
+      >
+        <option value="25">25 / page</option>
+        <option value="50">50 / page</option>
+        <option value="100">100 / page</option>
+        <option value="200">200 / page</option>
+      </Select>
+      <div className="flex items-center gap-1">
+        <Button
+          aria-label="Previous findings page"
+          disabled={isLoading || page <= 1}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <ChevronLeft className="size-4" aria-hidden="true" />
+        </Button>
+        <span className="min-w-20 text-center text-xs text-muted-foreground">
+          {total === 0 ? "Page 1 of 1" : `Page ${page} of ${totalPages}`}
+        </span>
+        <Button
+          aria-label="Next findings page"
+          disabled={isLoading || page >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -2165,13 +2281,21 @@ function DetailTerm({ label, value }: { label: string; value: string }) {
 
 export function resultLabel(
   isLoading: boolean,
-  count: number,
+  page: number,
+  pageSize: number,
+  total: number,
   scopeLabel = "the entire inventory",
 ): string {
   if (isLoading) {
     return "Loading..."
   }
-  return `${new Intl.NumberFormat().format(count)} finding${count === 1 ? "" : "s"} in ${scopeLabel}`
+  if (total === 0) {
+    return `0 findings in ${scopeLabel}`
+  }
+  const formatter = new Intl.NumberFormat()
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(total, page * pageSize)
+  return `Showing ${formatter.format(start)}-${formatter.format(end)} of ${formatter.format(total)} finding${total === 1 ? "" : "s"} in ${scopeLabel}`
 }
 
 function emptyFallback(value: string | null): string {

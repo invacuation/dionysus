@@ -276,6 +276,8 @@ export type FindingListParams = {
   fix_available?: boolean
   sort?: FindingSortKey
   direction?: SortDirection
+  page?: number
+  page_size?: number
 }
 
 export type FindingRow = {
@@ -310,6 +312,9 @@ export type FindingRow = {
 
 export type FindingListResponse = {
   rows: FindingRow[]
+  total: number
+  page: number
+  page_size: number
 }
 
 export type ProjectGroup = {
@@ -730,6 +735,12 @@ export function listFindings(params: FindingListParams): Promise<FindingListResp
   }
   appendParam(searchParams, "sort", params.sort)
   appendParam(searchParams, "direction", params.direction)
+  if (params.page !== undefined) {
+    searchParams.set("page", String(params.page))
+  }
+  if (params.page_size !== undefined) {
+    searchParams.set("page_size", String(params.page_size))
+  }
 
   const queryString = searchParams.toString()
   return getJson<FindingListResponse>(`/api/findings${queryString ? `?${queryString}` : ""}`)
