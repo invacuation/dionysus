@@ -68,6 +68,27 @@ func TestTrivyImportPersistsScanFindingsAndAudit(t *testing.T) {
 	assertAuditEvent(t, conn, "import.trivy.success", targetID, `"finding_count":2`)
 }
 
+func TestTrivyImportAcceptsLocalDatetimeScanStartedAt(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+
+	response := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID, "scan_started_at": "2026-05-07T09:30"}, trivyFixture(t))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var startedAt time.Time
+	if err := conn.QueryRowContext(t.Context(), "SELECT scan_started_at FROM scans").Scan(&startedAt); err != nil {
+		t.Fatalf("select scan_started_at: %v", err)
+	}
+	if !startedAt.Equal(time.Date(2026, 5, 7, 9, 30, 0, 0, time.UTC)) {
+		t.Fatalf("scan_started_at = %s", startedAt.Format(time.RFC3339))
+	}
+}
+
 func TestTrivyImportAcceptsFolderAssetDetailsAndReusesAsset(t *testing.T) {
 	conn := openSessionHTTPTestDB(t)
 	now := time.Now().UTC()

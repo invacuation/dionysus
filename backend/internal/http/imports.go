@@ -765,6 +765,12 @@ func parseTrivyTime(raw string) *time.Time {
 		utc := parsed.UTC()
 		return &utc
 	}
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04"} {
+		if parsed, err := time.ParseInLocation(layout, raw, time.UTC); err == nil {
+			utc := parsed.UTC()
+			return &utc
+		}
+	}
 	return nil
 }
 
