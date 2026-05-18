@@ -19,6 +19,7 @@ import {
   listUserSessions,
   regenerateMachineCredentialSecret,
   rejectFindingStatusRequest,
+  retractFindingStatusRequest,
   revokeMachineCredential,
   revokeUserSession,
   setAccessUserPassword,
@@ -294,6 +295,10 @@ const rejectedStatusRequest: Promise<FindingDetail> = rejectFindingStatusRequest
     comment: "Needs more evidence.",
   },
 )
+const retractedStatusRequest: Promise<FindingDetail> = retractFindingStatusRequest(
+  "finding-1",
+  "request-1",
+)
 
 void auditEntry
 void auditLog
@@ -338,3 +343,4 @@ void updatedDetail
 void approvedStatusRequest
 void approvedStatusRequestWithoutComment
 void rejectedStatusRequest
+void retractedStatusRequest

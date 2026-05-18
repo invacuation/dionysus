@@ -86,6 +86,7 @@ type findingDetailResponse struct {
 	ArtifactPath         *string                              `json:"artifact_path"`
 	SourceEvidence       map[string]any                       `json:"source_evidence"`
 	ProjectGroup         *projectGroupResponse                `json:"project_group"`
+	PeerReviewRequired   bool                                 `json:"peer_review_required_for_status_changes"`
 	Comments             []findingCommentResponse             `json:"comments"`
 	StatusChangeRequests []findingStatusChangeRequestResponse `json:"status_change_requests"`
 }
@@ -182,6 +183,15 @@ func mountFindingRoutes(router chi.Router, settings config.Settings, deps Depend
 	})
 	router.Post("/api/findings/{findingID}/status-requests/{requestID}/reject", func(w http.ResponseWriter, r *http.Request) {
 		reviewFindingStatusRequest(w, r, settings, deps, false)
+	})
+	router.Post("/api/findings/{findingID}/status-requests/{requestID}/retract", func(w http.ResponseWriter, r *http.Request) {
+		retractFindingStatusRequest(w, r, settings, deps)
+	})
+	router.Patch("/api/findings/{findingID}/status-requests/{requestID}/retract", func(w http.ResponseWriter, r *http.Request) {
+		retractFindingStatusRequest(w, r, settings, deps)
+	})
+	router.Delete("/api/findings/{findingID}/status-requests/{requestID}/retract", func(w http.ResponseWriter, r *http.Request) {
+		retractFindingStatusRequest(w, r, settings, deps)
 	})
 }
 
@@ -445,6 +455,65 @@ func reviewFindingStatusRequest(w http.ResponseWriter, r *http.Request, settings
 	}
 	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
 		Type:       eventType,
+		TargetType: stringPtr("finding"),
+		TargetID:   stringPtr(row.FindingID),
+		ProjectID:  stringPtr(row.ProjectID),
+		Metadata: map[string]any{
+			"request_id":  requestID,
+			"from_status": statusRequest.FromStatus,
+			"to_status":   statusRequest.ToStatus,
+		},
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	writeUpdatedFindingDetail(w, r, queries, row.FindingID)
+}
+
+func retractFindingStatusRequest(w http.ResponseWriter, r *http.Request, settings config.Settings, deps Dependencies) {
+	findingID := chi.URLParam(r, "findingID")
+	requestID := chi.URLParam(r, "requestID")
+	queries := dbgen.New(deps.DB)
+	row, ok := requireFindingRow(w, r, queries, findingID)
+	if !ok {
+		return
+	}
+	actor, ok := requireActorPermission(w, r, settings, deps, identity.PermissionRequest{Permission: "finding:status_change:request", ScopeType: stringPtr("project"), ScopeID: stringPtr(row.ProjectID)})
+	if !ok {
+		return
+	}
+	statusRequest, err := queries.GetFindingStatusChangeRequest(r.Context(), dbgen.GetFindingStatusChangeRequestParams{ID: requestID, FindingID: findingID})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Status change request not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if statusRequest.State != "pending" {
+		writeError(w, http.StatusBadRequest, "Status change request is not pending")
+		return
+	}
+	if statusRequest.RequesterPrincipalType != actor.PrincipalType || statusRequest.RequesterPrincipalID != actor.PrincipalID {
+		writeError(w, http.StatusBadRequest, "Only the requester can retract this status change")
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := queries.UpdateFindingStatusChangeRequestDecision(r.Context(), dbgen.UpdateFindingStatusChangeRequestDecisionParams{
+		State:                 "retracted",
+		ReviewerPrincipalType: sql.NullString{},
+		ReviewerPrincipalID:   sql.NullString{},
+		DecisionComment:       sql.NullString{},
+		DecidedAt:             sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:             now,
+		ID:                    requestID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if err := recordActorAuditEvent(r, deps, *actor, auditlog.Event{
+		Type:       "finding.status.retracted",
 		TargetType: stringPtr("finding"),
 		TargetID:   stringPtr(row.FindingID),
 		ProjectID:  stringPtr(row.ProjectID),
@@ -1120,6 +1189,10 @@ func findingDetailResponseFromDB(r *http.Request, queries *dbgen.Queries, row db
 	if err != nil {
 		return findingDetailResponse{}, err
 	}
+	peerReviewRequired, err := effectivePeerReviewRequired(r, queries, row.ProjectID, false)
+	if err != nil {
+		return findingDetailResponse{}, err
+	}
 	return findingDetailResponse{
 		findingRowResponse:   base,
 		ScannerFindingID:     row.ScannerFindingID,
@@ -1132,6 +1205,7 @@ func findingDetailResponseFromDB(r *http.Request, queries *dbgen.Queries, row db
 		ArtifactPath:         optionalStringFromNull(row.ArtifactPath),
 		SourceEvidence:       source,
 		ProjectGroup:         projectGroupResponseFromFinding(row),
+		PeerReviewRequired:   peerReviewRequired,
 		Comments:             comments,
 		StatusChangeRequests: statusRequests,
 	}, nil

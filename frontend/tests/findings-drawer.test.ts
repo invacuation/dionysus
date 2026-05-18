@@ -3,12 +3,16 @@ import { describe, expect, test } from "bun:test"
 import {
   buildActivity,
   buildCommentsActivity,
+  decisionSummaryForActivity,
   descriptionForFindingDetail,
+  effectiveStatusPeerReviewRequired,
   nextFindingTableSort,
   reduceFindingDrawerState,
+  statusPeerReviewControlState,
+  statusSubmitLabel,
   sortDirectionForNewFindingColumn,
 } from "../src/features/findings/findings-page"
-import type { FindingDetail } from "../src/lib/api"
+import type { FindingDetail, Project } from "../src/lib/api"
 
 describe("reduceFindingDrawerState", () => {
   test("opens a selected finding in an expanded drawer", () => {
@@ -106,6 +110,35 @@ describe("buildActivity", () => {
 
     expect(activity.map((item) => item.badge)).toEqual(["Import", "Hydration"])
   })
+
+  test("keeps reviewer and decision comment on completed status requests", () => {
+    const activity = buildActivity(
+      [],
+      [
+        {
+          id: "request-1",
+          requester_principal_type: "user",
+          requester_principal_id: "user-2",
+          requester_display: "Bob",
+          reviewer_principal_type: "user",
+          reviewer_principal_id: "user-3",
+          reviewer_display: "Carol",
+          from_status: "open",
+          to_status: "fixed",
+          state: "rejected",
+          comment: "Ready to close",
+          decision_comment: "Patch evidence is incomplete.",
+          created_at: "2026-05-08T12:00:00Z",
+          decided_at: "2026-05-08T12:10:00Z",
+        },
+      ],
+    )
+
+    expect(activity[0]?.badge).toBe("Request Rejected")
+    expect(decisionSummaryForActivity(activity[0])).toBe(
+      "Decision by Carol: Patch evidence is incomplete.",
+    )
+  })
 })
 
 describe("buildCommentsActivity", () => {
@@ -145,5 +178,88 @@ describe("buildCommentsActivity", () => {
     )
 
     expect(activity.map((item) => item.badge)).toEqual(["Comment"])
+  })
+
+  test("includes pending status requests so reviewers can act from activity", () => {
+    const activity = buildCommentsActivity(
+      [],
+      [
+        {
+          id: "request-1",
+          requester_principal_type: "user",
+          requester_principal_id: "user-2",
+          requester_display: "Bob",
+          reviewer_principal_type: null,
+          reviewer_principal_id: null,
+          reviewer_display: null,
+          from_status: "open",
+          to_status: "fixed",
+          state: "pending",
+          comment: "Ready to close",
+          decision_comment: null,
+          created_at: "2026-05-08T12:00:00Z",
+          decided_at: null,
+        },
+      ],
+    )
+
+    expect(activity.map((item) => item.badge)).toEqual(["Request Pending"])
+    expect(activity[0]?.request?.id).toBe("request-1")
+  })
+})
+
+describe("status peer review controls", () => {
+  test("locks peer review on when detail policy requires it", () => {
+    const detail = {
+      project_id: "project-1",
+      peer_review_required_for_status_changes: true,
+    } as FindingDetail
+
+    expect(effectiveStatusPeerReviewRequired(detail, [], false)).toBe(true)
+    expect(statusPeerReviewControlState(detail, [], false)).toEqual({
+      checked: true,
+      disabled: true,
+      label: "Peer review required",
+    })
+    expect(statusSubmitLabel(false, true)).toBe("Request")
+  })
+
+  test("keeps peer review optional when policy does not require it", () => {
+    const detail = {
+      project_id: "project-1",
+      peer_review_required_for_status_changes: false,
+    } as FindingDetail
+
+    expect(effectiveStatusPeerReviewRequired(detail, [], false)).toBe(false)
+    expect(statusPeerReviewControlState(detail, [], true)).toEqual({
+      checked: true,
+      disabled: false,
+      label: "Require peer review",
+    })
+    expect(statusSubmitLabel(false, false)).toBe("Change")
+  })
+
+  test("uses current project policy when detail policy was cached before the project changed", () => {
+    const detail = {
+      project_id: "project-1",
+      peer_review_required_for_status_changes: false,
+    } as FindingDetail
+
+    expect(
+      statusPeerReviewControlState(
+        detail,
+        [
+          {
+            id: "project-1",
+            require_peer_review_for_status_changes: true,
+          } as Project,
+        ],
+        false,
+      ),
+    ).toEqual({
+      checked: true,
+      disabled: true,
+      label: "Peer review required",
+    })
   })
 })

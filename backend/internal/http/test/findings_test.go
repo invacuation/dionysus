@@ -79,8 +79,41 @@ func TestFindingDetailReturnsEvidenceAndGroup(t *testing.T) {
 	if body.ProjectGroup == nil || body.ProjectGroup.PrimaryIdentifier != "CVE-2026-1001" || body.ProjectGroup.Status != "open" {
 		t.Fatalf("project group = %#v", body.ProjectGroup)
 	}
+	if body.PeerReviewRequired {
+		t.Fatalf("peer review required = true, want false")
+	}
 	if len(body.Comments) != 0 || len(body.StatusChangeRequests) != 0 {
 		t.Fatalf("activity = comments %#v requests %#v", body.Comments, body.StatusChangeRequests)
+	}
+}
+
+func TestFindingDetailReportsProjectPeerReviewRequirement(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	if _, err := conn.ExecContext(t.Context(), `UPDATE projects SET require_peer_review_for_status_changes = true WHERE id = ?`, projectID); err != nil {
+		t.Fatalf("enable project peer review: %v", err)
+	}
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID, "scan_started_at": "2026-05-07T09:30:00Z"}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+	findingID := findingIDByPackage(t, conn, projectID, "openssl")
+
+	response := authedProjectRequest(t, router, loginResponse, http.MethodGet, "/api/findings/"+findingID, "")
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body findingDetailResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.PeerReviewRequired {
+		t.Fatalf("peer review required = false, want true")
 	}
 }
 
@@ -228,8 +261,119 @@ func TestFindingStatusPeerReviewApproveAndSelfReviewBlock(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&approved); err != nil {
 		t.Fatalf("decode approved: %v", err)
 	}
-	if approved.Status != "fixed" || approved.StatusChangeRequests[0].ReviewerDisplay == nil || *approved.StatusChangeRequests[0].ReviewerDisplay != "Bob" {
+	if approved.Status != "fixed" || approved.StatusChangeRequests[0].ReviewerDisplay == nil || *approved.StatusChangeRequests[0].ReviewerDisplay != "Bob" || approved.StatusChangeRequests[0].DecisionComment == nil || *approved.StatusChangeRequests[0].DecisionComment != "Looks good." {
 		t.Fatalf("approved = %#v", approved)
+	}
+}
+
+func TestFindingStatusRequesterCanRetractOwnPendingRequest(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-status", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:status_change:request", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+	findingID := findingIDByPackage(t, conn, projectID, "openssl")
+	requestResponse := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status", `{"status":"fixed","comment":"Please review.","require_peer_review":true}`)
+	var requested findingDetailResponse
+	if err := json.NewDecoder(requestResponse.Body).Decode(&requested); err != nil {
+		t.Fatalf("decode requested: %v", err)
+	}
+	requestID := requested.StatusChangeRequests[0].ID
+
+	response := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status-requests/"+requestID+"/retract", `{}`)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("retract status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var retracted findingDetailResponse
+	if err := json.NewDecoder(response.Body).Decode(&retracted); err != nil {
+		t.Fatalf("decode retracted: %v", err)
+	}
+	if retracted.Status != "open" || len(retracted.StatusChangeRequests) != 1 || retracted.StatusChangeRequests[0].State != "retracted" || retracted.StatusChangeRequests[0].DecidedAt == nil {
+		t.Fatalf("retracted = %#v", retracted)
+	}
+	assertAuditEvent(t, conn, "finding.status.retracted", findingID, `"request_id":"`+requestID+`"`)
+}
+
+func TestFindingStatusRetractRouteAcceptsPostAndDelete(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-status", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:status_change:request", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+	findingID := findingIDByPackage(t, conn, projectID, "openssl")
+	requestResponse := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status", `{"status":"fixed","comment":"Please review.","require_peer_review":true}`)
+	var requested findingDetailResponse
+	if err := json.NewDecoder(requestResponse.Body).Decode(&requested); err != nil {
+		t.Fatalf("decode requested: %v", err)
+	}
+	requestID := requested.StatusChangeRequests[0].ID
+
+	response := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status-requests/"+requestID+"/retract", `{}`)
+
+	if response.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("retract route returned 405; body = %s", response.Body.String())
+	}
+	if response.Code != http.StatusOK {
+		t.Fatalf("retract route status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+
+	secondRequestResponse := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status", `{"status":"fixed","comment":"Please review again.","require_peer_review":true}`)
+	var secondRequested findingDetailResponse
+	if err := json.NewDecoder(secondRequestResponse.Body).Decode(&secondRequested); err != nil {
+		t.Fatalf("decode second requested: %v", err)
+	}
+	secondRequestID := secondRequested.StatusChangeRequests[1].ID
+
+	deleteResponse := authedProjectRequest(t, router, loginResponse, http.MethodDelete, "/api/findings/"+findingID+"/status-requests/"+secondRequestID+"/retract", "")
+
+	if deleteResponse.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("delete retract route returned 405; body = %s", deleteResponse.Body.String())
+	}
+	if deleteResponse.Code != http.StatusOK {
+		t.Fatalf("delete retract route status = %d, want %d; body = %s", deleteResponse.Code, http.StatusOK, deleteResponse.Body.String())
+	}
+}
+
+func TestFindingStatusRequesterCannotRetractAnotherUsersRequest(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-status-user-1", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:status_change:request", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view-user-1", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+	findingID := findingIDByPackage(t, conn, projectID, "openssl")
+	requestResponse := authedProjectRequest(t, router, loginResponse, http.MethodPost, "/api/findings/"+findingID+"/status", `{"status":"fixed","comment":"Please review.","require_peer_review":true}`)
+	var requested findingDetailResponse
+	if err := json.NewDecoder(requestResponse.Body).Decode(&requested); err != nil {
+		t.Fatalf("decode requested: %v", err)
+	}
+	requestID := requested.StatusChangeRequests[0].ID
+	insertHTTPUser(t, conn, httpUserFixture{ID: "user-2", Username: "bob", DisplayName: "Bob", IsActive: true, PasswordHash: argon2PasswordHash, CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-status-user-2", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-2", Permission: "finding:status_change:request", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	bobLogin := loginNamedHTTPUser(t, router, "bob", "correct horse battery staple")
+
+	response := authedProjectRequest(t, router, bobLogin, http.MethodPost, "/api/findings/"+findingID+"/status-requests/"+requestID+"/retract", `{}`)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("retract status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
 	}
 }
 

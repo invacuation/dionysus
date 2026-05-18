@@ -360,6 +360,7 @@ export type FindingDetail = FindingRow & {
   artifact_path: string | null
   source_evidence: Record<string, unknown>
   project_group: ProjectGroup | null
+  peer_review_required_for_status_changes: boolean
   comments: FindingComment[]
   status_change_requests: FindingStatusChangeRequest[]
 }
@@ -918,6 +919,25 @@ export function rejectFindingStatusRequest(
     `/api/findings/${encodeURIComponent(findingId)}/status-requests/${encodeURIComponent(requestId)}/reject`,
     params,
   )
+}
+
+export function retractFindingStatusRequest(
+  findingId: string,
+  requestId: string,
+): Promise<FindingDetail> {
+  return deleteJson<FindingDetail>(
+    `/api/findings/${encodeURIComponent(findingId)}/status-requests/${encodeURIComponent(requestId)}/retract`,
+  )
+}
+
+export async function deleteJson<TResponse>(path: string): Promise<TResponse> {
+  const response = await fetch(path, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+  })
+  await assertOk(response)
+  return (await response.json()) as TResponse
 }
 
 function appendParam(params: URLSearchParams, key: string, value: string | undefined): void {
