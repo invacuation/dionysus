@@ -48,6 +48,45 @@ func TestFindingsListReturnsImportedTrivyRows(t *testing.T) {
 	}
 }
 
+func TestFindingsListReportsGraceDaysAsPercentOfOriginalSLA(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	projectID, targetID := newImportProjectFixture(t, conn, now)
+	if _, err := conn.ExecContext(t.Context(), `UPDATE projects SET grace_period_enabled = true, grace_period_percent = 30, critical_sla_days = 100 WHERE id = ?`, projectID); err != nil {
+		t.Fatalf("update project SLA settings: %v", err)
+	}
+	router, loginResponse := newProjectUserRouter(t, conn, now)
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "import-upload", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "import:upload", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-view", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-1", Permission: "finding:view", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
+	importResponse := authedMultipartRequest(t, router, loginResponse, "/api/imports/trivy", map[string]string{"project_id": projectID, "scan_target_id": targetID, "scan_started_at": now.Format(time.RFC3339)}, trivyFixture(t))
+	if importResponse.Code != http.StatusOK {
+		t.Fatalf("import status = %d, want %d; body = %s", importResponse.Code, http.StatusOK, importResponse.Body.String())
+	}
+
+	response := authedProjectRequest(t, router, loginResponse, http.MethodGet, "/api/findings?project_id="+projectID, "")
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body findingListResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var critical *findingRowResponse
+	for idx := range body.Rows {
+		if body.Rows[idx].Severity == "CRITICAL" {
+			critical = &body.Rows[idx]
+			break
+		}
+	}
+	if critical == nil {
+		t.Fatalf("critical finding missing from response: %#v", body.Rows)
+	}
+	if critical.SLADays == nil || *critical.SLADays != 100 || critical.GraceDays == nil || *critical.GraceDays != 30 {
+		t.Fatalf("SLA days = %#v grace days = %#v, want 100 and 30", critical.SLADays, critical.GraceDays)
+	}
+}
+
 func TestFindingDetailReturnsEvidenceAndGroup(t *testing.T) {
 	conn := openSessionHTTPTestDB(t)
 	now := time.Now().UTC()
