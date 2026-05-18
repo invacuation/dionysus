@@ -266,6 +266,7 @@ export function InventoryPage() {
               <ProjectSettingsSummary
                 onSaved={async () => {
                   await queryClient.invalidateQueries({ queryKey: ["projects"] })
+                  await queryClient.invalidateQueries({ queryKey: ["findings"] })
                   await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
                 }}
                 onDeleted={async () => {

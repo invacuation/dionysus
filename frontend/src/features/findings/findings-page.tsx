@@ -36,6 +36,7 @@ import {
   listFindings,
   listProjects,
   rejectFindingStatusRequest,
+  retractFindingStatusRequest,
   updateFindingStatus,
   type ActorMetadata,
   type Asset,
@@ -493,6 +494,7 @@ export function FindingsPage({ currentActor }: { currentActor: ActorMetadata }) 
         onClose={() => setDrawerState((current) => reduceFindingDrawerState(current, "close"))}
         onMinimize={() => setDrawerState((current) => reduceFindingDrawerState(current, "minimize"))}
         onRestore={() => setDrawerState((current) => reduceFindingDrawerState(current, "restore"))}
+        projects={projects}
         selectedFindingId={selectedFindingId}
       />
     </div>
@@ -1083,6 +1085,7 @@ function FindingDrawer({
   onClose,
   onMinimize,
   onRestore,
+  projects,
   selectedFindingId,
 }: {
   currentActor: ActorMetadata
@@ -1094,6 +1097,7 @@ function FindingDrawer({
   onClose: () => void
   onMinimize: () => void
   onRestore: () => void
+  projects: Project[]
   selectedFindingId: string | null
 }) {
   const title = detail?.primary_identifier ?? "Finding Detail"
@@ -1157,6 +1161,7 @@ function FindingDrawer({
             error={error}
             isError={isError}
             isLoading={isLoading}
+            projects={projects}
             selectedFindingId={selectedFindingId}
           />
         </div>
@@ -1183,6 +1188,7 @@ function DetailPanel({
   error,
   isError,
   isLoading,
+  projects,
   selectedFindingId,
 }: {
   currentActor: ActorMetadata
@@ -1190,6 +1196,7 @@ function DetailPanel({
   error: Error | null
   isError: boolean
   isLoading: boolean
+  projects: Project[]
   selectedFindingId: string
 }) {
   const queryClient = useQueryClient()
@@ -1277,6 +1284,8 @@ function DetailPanel({
   const trimmedComment = commentBody.trim()
   const trimmedReason = statusReason.trim()
   const requiresReason = statusTarget !== detail.status && statusTarget !== "open"
+  const requireReview = effectiveStatusPeerReviewRequired(detail, projects, requirePeerReview)
+  const peerReviewControl = statusPeerReviewControlState(detail, projects, requirePeerReview)
   const canSubmitStatus =
     statusTarget !== detail.status &&
     (!requiresReason || trimmedReason.length > 0) &&
@@ -1354,12 +1363,7 @@ function DetailPanel({
                 {item.body ? (
                   <p className="mt-1 whitespace-pre-wrap break-words">{item.body}</p>
                 ) : null}
-                {item.decisionBody ? (
-                  <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
-                    Decision{item.decisionActor ? ` by ${item.decisionActor}` : ""}:{" "}
-                    {item.decisionBody}
-                  </p>
-                ) : null}
+                <ActivityDecisionSummary item={item} />
                 {selectedFindingId && item.request && isPendingStatusRequest(item.request) ? (
                   <StatusRequestReviewForm
                     currentActor={currentActor}
@@ -1414,7 +1418,7 @@ function DetailPanel({
             statusMutation.mutate({
               findingId: selectedFindingId,
               reason: trimmedReason,
-              requireReview: requirePeerReview,
+              requireReview,
               status: statusTarget,
             })
           }}
@@ -1441,14 +1445,19 @@ function DetailPanel({
           </Field>
           <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <input
-              checked={requirePeerReview}
+              checked={peerReviewControl.checked}
               className="size-4 rounded border"
-              disabled={statusMutation.isPending}
+              disabled={statusMutation.isPending || peerReviewControl.disabled}
               onChange={(event) => setRequirePeerReview(event.target.checked)}
               type="checkbox"
             />
-            <span>Require peer review</span>
+            <span>{peerReviewControl.label}</span>
           </label>
+          {peerReviewControl.disabled ? (
+            <p className="text-xs text-muted-foreground">
+              Project or global policy requires review for this status change.
+            </p>
+          ) : null}
           {requiresReason && !trimmedReason ? (
             <p className="text-xs text-muted-foreground">
               Add a reason before changing to this status.
@@ -1457,13 +1466,7 @@ function DetailPanel({
           <MutationError error={statusMutation.error} />
           <div className="flex justify-end">
             <Button disabled={!canSubmitStatus} size="sm" type="submit">
-              {statusMutation.isPending
-                ? requirePeerReview
-                  ? "Requesting..."
-                  : "Changing..."
-                : requirePeerReview
-                  ? "Request"
-                  : "Change"}
+              {statusSubmitLabel(statusMutation.isPending, requireReview)}
             </Button>
           </div>
         </form>
@@ -1491,6 +1494,7 @@ function DetailPanel({
                 {item.body ? (
                   <p className="mt-1 whitespace-pre-wrap break-words">{item.body}</p>
                 ) : null}
+                <ActivityDecisionSummary item={item} />
               </li>
             ))}
           </ol>
@@ -1570,6 +1574,21 @@ export function buildCommentsActivity(
   }
 
   return [
+    ...requests.filter(isPendingStatusRequest).map((request): ActivityItem => ({
+      id: `status-request-${request.id}`,
+      actor: displayPrincipalLabel(
+        request.requester_display,
+        request.requester_principal_type,
+        request.requester_principal_id,
+      ),
+      badge: `Request ${formatRequestState(request.state)}`,
+      body: request.comment,
+      createdAt: request.created_at,
+      decisionActor: null,
+      decisionBody: null,
+      request,
+      transition: { from: request.from_status, to: request.to_status },
+    })),
     ...comments
       .filter(
         (comment) =>
@@ -1593,6 +1612,63 @@ export function buildCommentsActivity(
         transition: null,
       })),
   ].sort(compareByCreatedAt)
+}
+
+export function effectiveStatusPeerReviewRequired(
+  detail: FindingDetail,
+  projects: Project[],
+  requestedPeerReview: boolean,
+): boolean {
+  return statusPeerReviewRequiredByPolicy(detail, projects) || requestedPeerReview
+}
+
+export function statusPeerReviewControlState(
+  detail: FindingDetail,
+  projects: Project[],
+  requestedPeerReview: boolean,
+): { checked: boolean; disabled: boolean; label: string } {
+  const requiredByPolicy = statusPeerReviewRequiredByPolicy(detail, projects)
+  return {
+    checked: requiredByPolicy || requestedPeerReview,
+    disabled: requiredByPolicy,
+    label: requiredByPolicy ? "Peer review required" : "Require peer review",
+  }
+}
+
+function statusPeerReviewRequiredByPolicy(detail: FindingDetail, projects: Project[]): boolean {
+  return (
+    detail.peer_review_required_for_status_changes ||
+    projects.some(
+      (project) =>
+        project.id === detail.project_id && project.require_peer_review_for_status_changes,
+    )
+  )
+}
+
+export function statusSubmitLabel(isPending: boolean, requirePeerReview: boolean): string {
+  if (isPending) {
+    return requirePeerReview ? "Requesting..." : "Changing..."
+  }
+  return requirePeerReview ? "Request" : "Change"
+}
+
+export function decisionSummaryForActivity(item: ActivityItem | undefined): string | null {
+  if (!item?.decisionBody) {
+    return null
+  }
+  return `Decision${item.decisionActor ? ` by ${item.decisionActor}` : ""}: ${item.decisionBody}`
+}
+
+function ActivityDecisionSummary({ item }: { item: ActivityItem }) {
+  const decisionSummary = decisionSummaryForActivity(item)
+  if (!decisionSummary) {
+    return null
+  }
+  return (
+    <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+      {decisionSummary}
+    </p>
+  )
 }
 
 function findingLifecycleActivity(detail: FindingDetail): ActivityItem[] {
@@ -1705,6 +1781,14 @@ function StatusRequestReviewForm({
     reviewMutation.mutate({ action, comment: trimmedDecisionComment })
   }
 
+  const retractMutation = useMutation({
+    mutationFn: () => retractFindingStatusRequest(findingId, request.id),
+    onSuccess: (updatedDetail) => {
+      queryClient.setQueryData(["findings", updatedDetail.id], updatedDetail)
+      void queryClient.invalidateQueries({ queryKey: ["findings"] })
+    },
+  })
+
   return (
     <div className="mt-3 space-y-3 rounded-md border bg-background p-3">
       <div>
@@ -1717,7 +1801,22 @@ function StatusRequestReviewForm({
             : "Review this requested status change for another user."}
         </p>
       </div>
-      {isRequester ? null : (
+      {isRequester ? (
+        <>
+          <MutationError error={retractMutation.error} />
+          <div className="flex justify-end">
+            <Button
+              disabled={retractMutation.isPending}
+              onClick={() => retractMutation.mutate()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {retractMutation.isPending ? "Retracting..." : "Retract request"}
+            </Button>
+          </div>
+        </>
+      ) : (
         <>
           <Textarea
             disabled={reviewMutation.isPending}

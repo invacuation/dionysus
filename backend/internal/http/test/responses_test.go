@@ -308,6 +308,7 @@ type findingDetailResponse struct {
 	ArtifactPath         *string                              `json:"artifact_path"`
 	SourceEvidence       map[string]any                       `json:"source_evidence"`
 	ProjectGroup         *projectGroupResponse                `json:"project_group"`
+	PeerReviewRequired   bool                                 `json:"peer_review_required_for_status_changes"`
 	Comments             []findingCommentResponse             `json:"comments"`
 	StatusChangeRequests []findingStatusChangeRequestResponse `json:"status_change_requests"`
 }
