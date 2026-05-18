@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/invacuation/dionysus/compare/v0.7.1...v0.8.0) (2026-05-18)
+
+
+### Features
+
+* **backend:** start Go backend migration ([#56](https://github.com/invacuation/dionysus/issues/56)) ([aeab6ba](https://github.com/invacuation/dionysus/commit/aeab6ba872ba590c4f35f6dc45194dfbcebc1db1))
+* **db:** make postgres the canonical sqlc dialect ([#60](https://github.com/invacuation/dionysus/issues/60)) ([1a41cf1](https://github.com/invacuation/dionysus/commit/1a41cf12be52e21a4c967f03aa4fd082afeeb04d))
+
+
+### Bug Fixes
+
+* honor peer review status workflow ([#62](https://github.com/invacuation/dionysus/issues/62)) ([efc7fa9](https://github.com/invacuation/dionysus/commit/efc7fa9c938edcee163a71a5ea9ec50fd969d488))
+
 ## [0.7.1](https://github.com/invacuation/dionysus/compare/v0.7.0...v0.7.1) (2026-05-13)
 
 
