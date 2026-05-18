@@ -9,7 +9,9 @@ import {
   Plus,
   Save,
   Search,
+  Settings,
   Trash2,
+  X,
 } from "lucide-react"
 import {
   useEffect,
@@ -80,6 +82,8 @@ export function InventoryPage() {
   const [assetSearch, setAssetSearch] = useState("")
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false)
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false)
+  const [projectDrawerId, setProjectDrawerId] = useState("")
+  const [assetDrawerId, setAssetDrawerId] = useState("")
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -112,6 +116,8 @@ export function InventoryPage() {
   const filteredAssets = useMemo(() => filterAssetTree(assets, assetSearch), [assets, assetSearch])
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null
+  const drawerProject = projects.find((project) => project.id === projectDrawerId) ?? null
+  const drawerAsset = assets.find((asset) => asset.id === assetDrawerId) ?? null
   const canOpenCreateFolder = canCreateFolderForSelection(selectedProjectId, selectedAsset)
 
   useEffect(() => {
@@ -123,6 +129,18 @@ export function InventoryPage() {
       setSelectedAssetId(assets[0].id)
     }
   }, [assets, selectedAssetId])
+
+  useEffect(() => {
+    if (projectDrawerId && !projects.some((project) => project.id === projectDrawerId)) {
+      setProjectDrawerId("")
+    }
+  }, [projects, projectDrawerId])
+
+  useEffect(() => {
+    if (assetDrawerId && !assets.some((asset) => asset.id === assetDrawerId)) {
+      setAssetDrawerId("")
+    }
+  }, [assets, assetDrawerId])
 
   return (
     <div className="space-y-5">
@@ -137,7 +155,7 @@ export function InventoryPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]">
+      <section className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
@@ -187,6 +205,11 @@ export function InventoryPage() {
               onSelect={(projectId) => {
                 setSelectedProjectId(projectId)
                 setSelectedAssetId("")
+              }}
+              onOpenSettings={(projectId) => {
+                setSelectedProjectId(projectId)
+                setSelectedAssetId("")
+                setProjectDrawerId(projectId)
               }}
               projects={filteredProjects}
               selectedProjectId={selectedProjectId}
@@ -247,69 +270,76 @@ export function InventoryPage() {
               isError={assetsQuery.isError}
               isLoading={assetsQuery.isPending && selectedProjectId.length > 0}
               onSelect={setSelectedAssetId}
+              onOpenDetails={(assetId) => {
+                setSelectedAssetId(assetId)
+                setAssetDrawerId(assetId)
+              }}
               selectedAssetId={selectedAssetId}
               selectedProjectId={selectedProjectId}
               visibleAssets={filteredAssets}
             />
           </CardContent>
         </Card>
-
-        <div className="space-y-4 xl:sticky xl:top-5 xl:self-start">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Project Settings</CardTitle>
-              <CardDescription>
-                {selectedProject ? selectedProject.slug : "No project selected"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ProjectSettingsSummary
-                onSaved={async () => {
-                  await queryClient.invalidateQueries({ queryKey: ["projects"] })
-                  await queryClient.invalidateQueries({ queryKey: ["findings"] })
-                  await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
-                }}
-                onDeleted={async () => {
-                  setSelectedProjectId("")
-                  setSelectedAssetId("")
-                  setAssetSearch("")
-                  await queryClient.invalidateQueries({ queryKey: ["projects"] })
-                  await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
-                }}
-                project={selectedProject}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Asset Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <AssetDetail
-                asset={selectedAsset}
-                assets={assets}
-                onSaved={async (asset) => {
-                  await queryClient.invalidateQueries({
-                    queryKey: ["projects", selectedProjectId, "assets"],
-                  })
-                  await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
-                  setSelectedAssetId(asset.id)
-                }}
-                onDeleted={async () => {
-                  setSelectedAssetId("")
-                  await queryClient.invalidateQueries({
-                    queryKey: ["projects", selectedProjectId, "assets"],
-                  })
-                  await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
-                }}
-                project={selectedProject}
-                selectedProjectId={selectedProjectId}
-              />
-            </CardContent>
-          </Card>
-        </div>
       </section>
+
+      {drawerProject ? (
+        <InventoryDrawer
+          description={drawerProject.slug}
+          label="Project settings drawer"
+          onClose={() => setProjectDrawerId("")}
+          title="Project Settings"
+        >
+          <ProjectSettingsSummary
+            onSaved={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["projects"] })
+              await queryClient.invalidateQueries({ queryKey: ["findings"] })
+              await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
+            }}
+            onDeleted={async () => {
+              setSelectedProjectId("")
+              setSelectedAssetId("")
+              setAssetSearch("")
+              setProjectDrawerId("")
+              setAssetDrawerId("")
+              await queryClient.invalidateQueries({ queryKey: ["projects"] })
+              await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
+            }}
+            project={drawerProject}
+          />
+        </InventoryDrawer>
+      ) : null}
+
+      {drawerAsset ? (
+        <InventoryDrawer
+          description={drawerAsset.path}
+          label="Asset detail drawer"
+          onClose={() => setAssetDrawerId("")}
+          title="Asset Details"
+        >
+          <AssetDetail
+            asset={drawerAsset}
+            assets={assets}
+            onSaved={async (asset) => {
+              await queryClient.invalidateQueries({
+                queryKey: ["projects", selectedProjectId, "assets"],
+              })
+              await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
+              setSelectedAssetId(asset.id)
+              setAssetDrawerId(asset.id)
+            }}
+            onDeleted={async () => {
+              setSelectedAssetId("")
+              setAssetDrawerId("")
+              await queryClient.invalidateQueries({
+                queryKey: ["projects", selectedProjectId, "assets"],
+              })
+              await queryClient.invalidateQueries({ queryKey: ["audit-log"] })
+            }}
+            project={selectedProject}
+            selectedProjectId={selectedProjectId}
+          />
+        </InventoryDrawer>
+      ) : null}
     </div>
   )
 }
@@ -473,12 +503,14 @@ function SearchInput({
 function ProjectList({
   isError,
   isLoading,
+  onOpenSettings,
   onSelect,
   projects,
   selectedProjectId,
 }: {
   isError: boolean
   isLoading: boolean
+  onOpenSettings: (projectId: string) => void
   onSelect: (projectId: string) => void
   projects: Project[]
   selectedProjectId: string
@@ -498,20 +530,34 @@ function ProjectList({
   return (
     <div className="space-y-1">
       {projects.map((project) => (
-        <button
+        <div
           className={cn(
-            "grid w-full gap-1 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+            "grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
             selectedProjectId === project.id
               ? "border-primary bg-accent text-accent-foreground"
               : "bg-background",
           )}
           key={project.id}
-          onClick={() => onSelect(project.id)}
-          type="button"
         >
-          <span className="truncate font-medium">{project.name}</span>
-          <span className="truncate text-xs text-muted-foreground">{project.slug}</span>
-        </button>
+          <button
+            className="grid min-w-0 gap-1 text-left hover:text-foreground"
+            onClick={() => onSelect(project.id)}
+            type="button"
+          >
+            <span className="truncate font-medium">{project.name}</span>
+            <span className="truncate text-xs text-muted-foreground">{project.slug}</span>
+          </button>
+          <Button
+            aria-label={`Open settings for ${project.name}`}
+            onClick={() => onOpenSettings(project.id)}
+            size="icon"
+            title={`Open settings for ${project.name}`}
+            type="button"
+            variant="ghost"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
       ))}
     </div>
   )
@@ -521,6 +567,7 @@ function AssetTree({
   assets,
   isError,
   isLoading,
+  onOpenDetails,
   onSelect,
   selectedAssetId,
   selectedProjectId,
@@ -529,6 +576,7 @@ function AssetTree({
   assets: Asset[]
   isError: boolean
   isLoading: boolean
+  onOpenDetails: (assetId: string) => void
   onSelect: (assetId: string) => void
   selectedAssetId: string
   selectedProjectId: string
@@ -647,36 +695,37 @@ function AssetTree({
       </button>
       {moveError ? <StateMessage tone="error">{moveError}</StateMessage> : null}
       <div className="overflow-hidden rounded-md border">
-      <ul className="divide-y">
-        {rows.map((row) =>
-          row.kind === "group" ? (
-            <li
-              className="flex min-h-10 items-center gap-2 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
-              key={row.id}
-              style={{ paddingLeft: treeIndentPadding(row.depth) }}
-            >
-              <FolderTree className="size-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 truncate font-medium">{row.name}</span>
-            </li>
-          ) : (
-            <AssetTreeNode
-              asset={row.asset}
-              depth={row.depth}
-              draggedAsset={draggedAsset}
-              isSelected={selectedAssetId === row.asset.id}
-              key={row.asset.id}
-              onDragEnd={handleDragEnd}
-              onDragLeave={handleDragLeave}
-              onDragOver={handleDragOver}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-              onSelect={onSelect}
-              activeDropParentId={activeDropParentId}
-              assets={assets}
-            />
-          ),
-        )}
-      </ul>
+        <ul className="divide-y">
+          {rows.map((row) =>
+            row.kind === "group" ? (
+              <li
+                className="flex min-h-10 items-center gap-2 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+                key={row.id}
+                style={{ paddingLeft: treeIndentPadding(row.depth) }}
+              >
+                <FolderTree className="size-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 truncate font-medium">{row.name}</span>
+              </li>
+            ) : (
+              <AssetTreeNode
+                activeDropParentId={activeDropParentId}
+                asset={row.asset}
+                assets={assets}
+                depth={row.depth}
+                draggedAsset={draggedAsset}
+                isSelected={selectedAssetId === row.asset.id}
+                key={row.asset.id}
+                onDragEnd={handleDragEnd}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDragStart={handleDragStart}
+                onDrop={handleDrop}
+                onOpenDetails={onOpenDetails}
+                onSelect={onSelect}
+              />
+            ),
+          )}
+        </ul>
       </div>
     </div>
   )
@@ -694,6 +743,7 @@ function AssetTreeNode({
   onDragOver,
   onDragStart,
   onDrop,
+  onOpenDetails,
   onSelect,
 }: {
   activeDropParentId: string | null | undefined
@@ -707,6 +757,7 @@ function AssetTreeNode({
   onDragOver: (event: DragEvent<HTMLElement>, parentId: string | null) => void
   onDragStart: (event: DragEvent<HTMLElement>, asset: Asset) => void
   onDrop: (event: DragEvent<HTMLElement>, parentId: string | null) => void
+  onOpenDetails: (assetId: string) => void
   onSelect: (assetId: string) => void
 }) {
   const Icon = asset.type === folderType ? Folder : asset.type === scanTargetType ? PackageSearch : Box
@@ -717,7 +768,7 @@ function AssetTreeNode({
 
   return (
     <li>
-      <button
+      <div
         aria-current={isSelected ? "true" : undefined}
         className={cn(
           "grid min-h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
@@ -725,40 +776,102 @@ function AssetTreeNode({
           activeDropParentId === asset.id && acceptsDrop && "bg-accent text-accent-foreground",
           draggedAsset?.id === asset.id && "opacity-60",
         )}
-        draggable
-        onDragEnd={onDragEnd}
-        onDragLeave={() => {
-          if (asset.type === folderType) {
-            onDragLeave(asset.id)
-          }
-        }}
-        onDragOver={(event) => {
-          if (asset.type === folderType) {
-            onDragOver(event, asset.id)
-          }
-        }}
-        onDragStart={(event) => onDragStart(event, asset)}
-        onDrop={(event) => {
-          if (asset.type === folderType) {
-            onDrop(event, asset.id)
-          }
-        }}
-        onClick={() => onSelect(asset.id)}
         style={{ paddingLeft: treeIndentPadding(depth) }}
-        type="button"
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <button
+          className="flex min-w-0 items-center gap-2 text-left"
+          draggable
+          onDragEnd={onDragEnd}
+          onDragLeave={() => {
+            if (asset.type === folderType) {
+              onDragLeave(asset.id)
+            }
+          }}
+          onDragOver={(event) => {
+            if (asset.type === folderType) {
+              onDragOver(event, asset.id)
+            }
+          }}
+          onDragStart={(event) => onDragStart(event, asset)}
+          onDrop={(event) => {
+            if (asset.type === folderType) {
+              onDrop(event, asset.id)
+            }
+          }}
+          onClick={() => onSelect(asset.id)}
+          type="button"
+        >
           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">{asset.name}</span>
             <span className="block truncate text-xs text-muted-foreground">{asset.path}</span>
           </span>
-        </span>
-        <Badge variant={asset.type === scanTargetType ? "default" : "outline"}>
-          {assetBadgeLabel(asset)}
-        </Badge>
-      </button>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Badge variant={asset.type === scanTargetType ? "default" : "outline"}>
+            {assetBadgeLabel(asset)}
+          </Badge>
+          <Button
+            aria-label={`Open details for ${asset.name}`}
+            onClick={() => onOpenDetails(asset.id)}
+            size="icon"
+            title={`Open details for ${asset.name}`}
+            type="button"
+            variant="ghost"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
     </li>
+  )
+}
+
+function InventoryDrawer({
+  children,
+  description,
+  label,
+  onClose,
+  title,
+}: {
+  children: ReactNode
+  description?: string
+  label: string
+  onClose: () => void
+  title: string
+}) {
+  return (
+    <div className="pointer-events-none fixed inset-0 z-40">
+      <Card
+        aria-modal="true"
+        aria-label={label}
+        className="pointer-events-auto fixed inset-y-0 right-0 flex w-full max-w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 py-0 shadow-2xl sm:inset-y-3 sm:right-3 sm:w-[min(34rem,calc(100vw-3rem))] sm:rounded-lg sm:border"
+        role="dialog"
+      >
+        <CardHeader className="min-h-20 shrink-0 border-b px-6 py-4">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="break-words text-base">{title}</CardTitle>
+              {description ? (
+                <CardDescription className="mt-1 break-words">{description}</CardDescription>
+              ) : null}
+            </div>
+            <Button
+              aria-label={`Close ${title.toLocaleLowerCase()}`}
+              onClick={onClose}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {children}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
