@@ -7,29 +7,22 @@ RUN bun install --frozen-lockfile
 COPY frontend/ ./
 RUN bun run build
 
-FROM ghcr.io/astral-sh/uv:python3.13-alpine AS backend-build
-WORKDIR /app
-RUN apk add --no-cache build-base libpq-dev
-COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
-COPY src/ ./src/
-RUN uv sync --frozen --no-dev
+FROM golang:1.26-alpine AS backend-build
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/dionysus ./cmd/dionysus
 
-FROM python:3.13-alpine AS runtime
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
-WORKDIR /app
+FROM alpine:3.23 AS runtime
+ENV DIONYSUS_DATABASE_URL=sqlite:////app/var/dionysus.db \
+    DIONYSUS_FRONTEND_DIST=/app/frontend/dist
+WORKDIR /app/backend
 RUN apk upgrade --no-cache \
-    && apk add --no-cache libpq \
-    && python -m pip install --no-cache-dir --upgrade "pip>=26.1"
+    && apk add --no-cache ca-certificates
 
-COPY --from=backend-build /app/.venv /app/.venv
-COPY pyproject.toml ./
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-COPY alembic.ini ./
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+COPY --from=backend-build /out/dionysus /app/backend/dionysus
+COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn dionysus.app:create_app --factory --host 0.0.0.0 --port 8000"]
+CMD ["/app/backend/dionysus"]

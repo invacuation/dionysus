@@ -26,8 +26,8 @@ jobs:
             exit 1
           fi
 
-  backend-quality:
-    name: backend quality
+  go-backend-quality:
+    name: go backend quality
     runs-on: ubuntu-latest
     steps:
       # actions/checkout@v4
@@ -35,30 +35,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: install uv
-        # astral-sh/setup-uv@v4
-        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+      - name: set up go
+        # actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
-      - name: set up python
-        run: uv python install 3.13
-
-      - name: check lockfile
-        run: uv lock --check
-
-      - name: install backend dependencies
-        run: uv sync --dev
-
-      - name: run ruff
-        run: uv run ruff check .
-
-      - name: check formatting
-        run: uv run ruff format --check .
-
-      - name: run ty
-        run: uv run ty check src tests migrations
-
-      - name: run backend tests
-        run: uv run pytest
+      - name: run go tests
+        working-directory: backend
+        run: go test ./...
 
   migrations:
     name: database migrations
@@ -69,24 +55,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: install uv
-        # astral-sh/setup-uv@v4
-        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+      - name: set up go
+        # actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
-      - name: set up python
-        run: uv python install 3.13
-
-      - name: install backend dependencies
-        run: uv sync --dev
-
-      - name: upgrade to head
-        run: uv run alembic upgrade head
-
-      - name: downgrade to base
-        run: uv run alembic downgrade base
-
-      - name: upgrade again
-        run: uv run alembic upgrade head
+      - name: verify go schema migration
+        working-directory: backend
+        run: go test ./internal/db/test -run 'TestMigrate'
 
   frontend-quality:
     name: frontend quality
@@ -173,6 +151,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: set up node
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22.12.0"
+
+      - name: set up bun
+        # oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: install playwright
+        working-directory: frontend
+        run: bunx playwright install --with-deps chromium
+
       - name: build app image
         run: docker compose build app
 
@@ -193,6 +189,23 @@ jobs:
           docker compose ps
           docker compose logs --no-color app
           exit 1
+
+      - name: run deployed app e2e
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8000
+          E2E_REAL_BACKEND: "1"
+        run: bun run e2e:deployed
+
+      - name: upload deployed playwright artifacts
+        if: failure()
+        # actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployed-playwright-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
 
       - name: stop app
         if: always()

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+test.skip(process.env.E2E_REAL_BACKEND === "1", "mocked app smoke runs only against Vite")
+
 test.beforeEach(async ({ page }) => {
   await mockAuthenticatedApi(page)
 })

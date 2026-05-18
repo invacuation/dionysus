@@ -4,17 +4,14 @@ Security scan triage web application.
 
 ## Local Development
 
-Use Python 3.13 with `uv`. Use Node 22.12.0 from `.nvmrc` / `.node-version`, and run
-frontend package scripts with Bun.
+Use Go 1.26 for the backend and Node 22.12.0 from `.nvmrc` / `.node-version`
+with Bun for frontend package scripts.
 
-Releases are managed by release-please. Regular feature PRs should not edit version files;
-release-please opens dedicated release PRs with the package metadata and changelog updates.
+The application defaults to using SQLite, storing the db at `./var/dionysus.db`.
 
-Install Python dependencies:
-
-```bash
-uv sync
-```
+Releases are managed by release-please. Regular feature PRs should not edit
+version files; release-please opens dedicated release PRs with package metadata
+and changelog updates
 
 Install frontend dependencies:
 
@@ -23,10 +20,30 @@ cd frontend
 bun install
 ```
 
-Run the backend only:
+Run the backend:
 
 ```bash
-uv run uvicorn dionysus.app:create_app --factory --reload
+cd backend
+go run ./cmd/dionysus
+```
+
+If you haven't set up the DB uo yet, you'll have to run this instead:
+```bash
+cd backend
+
+DIONYSUS_BOOTSTRAP_ADMIN_USERNAME=<admin_username> \
+DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD=<admin_password> \
+DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME=<admin_display_name> \
+go run ./cmd/dionysus
+```
+
+The backend applies the initial Go-owned schema automatically when the database
+is empty. During the unreleased phase, reset local development data after schema
+changes:
+
+```bash
+docker compose down --volumes --remove-orphans
+rm -f var/dionysus.db
 ```
 
 Run the React frontend in another shell:
@@ -36,6 +53,7 @@ cd frontend
 bun run dev
 ```
 
+Browse to `http://127.0.0.1:5173` to use Dionysus.
 Vite proxies `/api` requests to the backend at `http://127.0.0.1:8000`.
 
 For a production/static-style local build:
@@ -68,17 +86,16 @@ cd frontend
 bun run e2e:headed
 ```
 
-
 ## Docker
 
 The compose setup supports two database options:
 
-1. **SQLite (default)** — no external SQL service required, stores data in `./var` on
-   your local filesystem.
-2. **PostgreSQL** — either the bundled `db` service or a pre-existing PostgreSQL
+1. **SQLite (default)**: no external SQL service required, stores data in `./var`
+   on your local filesystem.
+2. **PostgreSQL**: either the bundled `db` service or a pre-existing PostgreSQL
    instance via `DIONYSUS_DATABASE_URL`.
 
-Run with SQLite (default):
+Run with SQLite:
 
 ```bash
 docker compose up --build
@@ -86,8 +103,8 @@ docker compose up --build
 
 On first startup with no existing users, Dionysus bootstraps the initial admin
 from environment variables. `DIONYSUS_BOOTSTRAP_ADMIN_USERNAME` must be a login
-identifier, `DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD` must be at least 15 characters, and
-`DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME` is optional. Docker Compose provides
+identifier, `DIONYSUS_BOOTSTRAP_ADMIN_PASSWORD` must be at least 15 characters,
+and `DIONYSUS_BOOTSTRAP_ADMIN_DISPLAY_NAME` is optional. Docker Compose provides
 local-only defaults:
 
 ```bash
@@ -103,42 +120,43 @@ the app will warn when they remain configured, but it will not fail startup.
 Run with bundled PostgreSQL:
 
 ```bash
-DIONYSUS_DATABASE_URL=postgresql+psycopg://dionysus:dionysus@db:5432/dionysus \
+DIONYSUS_DATABASE_URL=postgresql://dionysus:dionysus@db:5432/dionysus \
   docker compose --profile postgres up --build
 ```
 
 Run with an existing PostgreSQL database:
 
 ```bash
-DIONYSUS_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME \
+DIONYSUS_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME \
   docker compose up --build
 ```
 
 The app is available at `http://127.0.0.1:8000`.
+
+## Manual Verification
+
+Before review, smoke the Docker image against a fresh database:
+
+```bash
+docker compose down --volumes --remove-orphans
+rm -f var/dionysus.db
+docker compose up --build
+```
+
+Sign in with the configured bootstrap admin, create a project, import
+`backend/testdata/trivy-image.json`, review the findings list, and check the
+admin security pages.
 
 ## Quality Gate
 
 Run this before committing code changes:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run ty check src tests migrations
-uv run pytest
+cd backend
+go test ./...
+cd ..
 cd frontend
 bun run typecheck
 bun run e2e
 bun run build
-```
-
-Create a migration after model changes:
-
-```bash
-uv run alembic revision --autogenerate -m "describe change"
-```
-
-Apply migrations:
-
-```bash
-uv run alembic upgrade head
 ```
