@@ -1,10 +1,10 @@
 CREATE TABLE app_security_settings (
     id VARCHAR(50) PRIMARY KEY NOT NULL,
     force_peer_review_for_status_changes BOOLEAN NOT NULL DEFAULT false,
-    session_idle_timeout_minutes INTEGER,
-    session_absolute_timeout_minutes INTEGER,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    session_idle_timeout_minutes BIGINT,
+    session_absolute_timeout_minutes BIGINT,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE audit_log_events (
@@ -19,7 +19,7 @@ CREATE TABLE audit_log_events (
     ip_address VARCHAR(120),
     user_agent TEXT,
     metadata_json TEXT NOT NULL,
-    created_at DATETIME NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE groups (
@@ -27,8 +27,8 @@ CREATE TABLE groups (
     name VARCHAR(150) NOT NULL,
     display_name VARCHAR(200) NOT NULL,
     is_protected BOOLEAN NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE group_memberships (
@@ -36,8 +36,8 @@ CREATE TABLE group_memberships (
     group_id VARCHAR NOT NULL,
     principal_type VARCHAR(20) NOT NULL,
     principal_id VARCHAR(36) NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 
@@ -47,19 +47,19 @@ CREATE TABLE machine_credentials (
     client_id VARCHAR(64) NOT NULL,
     client_secret_digest VARCHAR(64) NOT NULL,
     is_active BOOLEAN NOT NULL,
-    revoked_at DATETIME,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE machine_tokens (
     id VARCHAR PRIMARY KEY NOT NULL,
     machine_credential_id VARCHAR NOT NULL,
     token_digest VARCHAR(64) NOT NULL,
-    expires_at DATETIME NOT NULL,
-    revoked_at DATETIME,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
 );
 
@@ -67,10 +67,10 @@ CREATE TABLE machine_refresh_tokens (
     id VARCHAR PRIMARY KEY NOT NULL,
     machine_credential_id VARCHAR NOT NULL,
     token_digest VARCHAR(64) NOT NULL,
-    expires_at DATETIME NOT NULL,
-    revoked_at DATETIME,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (machine_credential_id) REFERENCES machine_credentials(id) ON DELETE CASCADE
 );
 
@@ -82,8 +82,8 @@ CREATE TABLE permission_assignments (
     effect VARCHAR(20) NOT NULL,
     scope_type VARCHAR(50),
     scope_id VARCHAR(36),
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE projects (
@@ -94,15 +94,15 @@ CREATE TABLE projects (
     sla_tracking_enabled BOOLEAN NOT NULL,
     sla_reporting_enabled BOOLEAN NOT NULL,
     grace_period_enabled BOOLEAN NOT NULL,
-    grace_period_percent INTEGER NOT NULL,
+    grace_period_percent BIGINT NOT NULL,
     require_peer_review_for_status_changes BOOLEAN NOT NULL DEFAULT false,
-    critical_sla_days INTEGER NOT NULL DEFAULT 30,
-    high_sla_days INTEGER NOT NULL DEFAULT 60,
-    medium_sla_days INTEGER NOT NULL DEFAULT 90,
-    low_sla_days INTEGER NOT NULL DEFAULT 180,
-    unknown_sla_days INTEGER NOT NULL DEFAULT 365,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    critical_sla_days BIGINT NOT NULL DEFAULT 30,
+    high_sla_days BIGINT NOT NULL DEFAULT 60,
+    medium_sla_days BIGINT NOT NULL DEFAULT 90,
+    low_sla_days BIGINT NOT NULL DEFAULT 180,
+    unknown_sla_days BIGINT NOT NULL DEFAULT 365,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE asset_nodes (
@@ -117,10 +117,10 @@ CREATE TABLE asset_nodes (
     sla_tracking_enabled BOOLEAN,
     sla_reporting_enabled BOOLEAN,
     grace_period_enabled BOOLEAN,
-    grace_period_percent INTEGER,
-    sort_order INTEGER NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    grace_period_percent BIGINT,
+    sort_order BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
     UNIQUE (project_id, path)
@@ -137,8 +137,8 @@ CREATE TABLE import_attempts (
     sanitized_message TEXT,
     correlation_id VARCHAR(120),
     metadata_json TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (asset_node_id) REFERENCES asset_nodes(id) ON DELETE CASCADE
 );
@@ -150,11 +150,11 @@ CREATE TABLE scans (
     scanner_kind VARCHAR(50) NOT NULL,
     report_kind VARCHAR(120) NOT NULL,
     parser_version VARCHAR(50) NOT NULL,
-    scan_started_at DATETIME,
-    scan_finished_at DATETIME,
+    scan_started_at TIMESTAMPTZ,
+    scan_finished_at TIMESTAMPTZ,
     metadata_json TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (scan_target_id) REFERENCES asset_nodes(id) ON DELETE CASCADE
 );
@@ -164,12 +164,12 @@ CREATE TABLE project_vulnerability_groups (
     project_id VARCHAR NOT NULL,
     primary_identifier VARCHAR(255) NOT NULL,
     additional_identifiers_json TEXT NOT NULL,
-    first_detected_at DATETIME NOT NULL,
+    first_detected_at TIMESTAMPTZ NOT NULL,
     severity VARCHAR(50) NOT NULL,
     status VARCHAR(50) NOT NULL,
     dedupe_key VARCHAR(512) NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE (project_id, dedupe_key)
 );
@@ -192,14 +192,14 @@ CREATE TABLE raw_finding_instances (
     artifact_name TEXT,
     artifact_type VARCHAR(120),
     artifact_path TEXT,
-    first_seen_at DATETIME NOT NULL,
-    last_seen_at DATETIME NOT NULL,
+    first_seen_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ NOT NULL,
     present_in_latest_scan BOOLEAN NOT NULL,
     status VARCHAR(50) NOT NULL,
     references_json TEXT NOT NULL,
     source_json TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
     FOREIGN KEY (scan_target_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
@@ -216,8 +216,8 @@ CREATE TABLE finding_comments (
     is_system BOOLEAN NOT NULL,
     status_from VARCHAR(50),
     status_to VARCHAR(50),
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (finding_id) REFERENCES raw_finding_instances(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
@@ -235,9 +235,9 @@ CREATE TABLE finding_status_change_requests (
     state VARCHAR(20) NOT NULL,
     comment TEXT,
     decision_comment TEXT,
-    decided_at DATETIME,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    decided_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (finding_id) REFERENCES raw_finding_instances(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
@@ -255,9 +255,9 @@ CREATE TABLE finding_release_status_decisions (
     source_finding_id VARCHAR NOT NULL,
     source_comment_id VARCHAR,
     source_request_id VARCHAR,
-    decided_at DATETIME NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    decided_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (release_scope_asset_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
     FOREIGN KEY (release_version_asset_id) REFERENCES asset_nodes(id) ON DELETE CASCADE,
@@ -280,12 +280,12 @@ CREATE TABLE user_sessions (
     token_digest VARCHAR(64) NOT NULL,
     user_agent TEXT,
     ip_address VARCHAR(64),
-    expires_at DATETIME NOT NULL,
-    idle_expires_at DATETIME NOT NULL,
-    revoked_at DATETIME,
-    last_seen_at DATETIME NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    expires_at TIMESTAMPTZ NOT NULL,
+    idle_expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE users (
@@ -293,15 +293,15 @@ CREATE TABLE users (
     username VARCHAR(150) NOT NULL UNIQUE,
     display_name VARCHAR(200) NOT NULL,
     is_active BOOLEAN NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE user_password_credentials (
     id VARCHAR PRIMARY KEY NOT NULL,
     user_id VARCHAR NOT NULL,
     password_hash TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

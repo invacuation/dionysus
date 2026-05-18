@@ -25,7 +25,7 @@ INSERT INTO audit_log_events (
     user_agent,
     metadata_json,
     created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING
     id,
     event_type,
@@ -134,14 +134,14 @@ SELECT
     created_at
 FROM audit_log_events
 WHERE
-    (? IS NULL OR event_type = ?)
-    AND (? IS NULL OR project_id = ?)
-    AND (? IS NULL OR target_type = ?)
-    AND (? IS NULL OR target_id = ?)
-    AND (? IS NULL OR created_at >= ?)
-    AND (? IS NULL OR created_at <= ?)
+    ($1 IS NULL OR event_type = $2)
+    AND ($3 IS NULL OR project_id = $4)
+    AND ($5 IS NULL OR target_type = $6)
+    AND ($7 IS NULL OR target_id = $8)
+    AND ($9 IS NULL OR created_at >= $10)
+    AND ($11 IS NULL OR created_at <= $12)
 ORDER BY created_at DESC
-LIMIT ?
+LIMIT $13
 `
 
 type ListAuditLogEventsParams struct {
@@ -157,7 +157,7 @@ type ListAuditLogEventsParams struct {
 	CreatedAt   time.Time
 	Column11    interface{}
 	CreatedAt_2 time.Time
-	Limit       int64
+	Limit       int32
 }
 
 func (q *Queries) ListAuditLogEvents(ctx context.Context, arg ListAuditLogEventsParams) ([]AuditLogEvent, error) {

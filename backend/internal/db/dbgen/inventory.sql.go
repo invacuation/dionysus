@@ -14,7 +14,7 @@ import (
 const countProjectAssets = `-- name: CountProjectAssets :one
 SELECT count(*)
 FROM asset_nodes
-WHERE project_id = ?
+WHERE project_id = $1
 `
 
 func (q *Queries) CountProjectAssets(ctx context.Context, projectID string) (int64, error) {
@@ -41,7 +41,7 @@ INSERT INTO asset_nodes (
     sort_order,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING
     id,
     project_id,
@@ -135,7 +135,7 @@ INSERT INTO projects (
     unknown_sla_days,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 30, 60, 90, 180, 365, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 30, 60, 90, 180, 365, $10, $11)
 RETURNING
     id,
     slug,
@@ -207,7 +207,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 
 const deleteAssetSubtree = `-- name: DeleteAssetSubtree :exec
 DELETE FROM asset_nodes
-WHERE project_id = ? AND (id = ? OR path LIKE ?)
+WHERE project_id = $1 AND (id = $2 OR path LIKE $3)
 `
 
 type DeleteAssetSubtreeParams struct {
@@ -223,7 +223,7 @@ func (q *Queries) DeleteAssetSubtree(ctx context.Context, arg DeleteAssetSubtree
 
 const deleteProject = `-- name: DeleteProject :exec
 DELETE FROM projects
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) DeleteProject(ctx context.Context, id string) error {
@@ -233,7 +233,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id string) error {
 
 const deleteProjectAssets = `-- name: DeleteProjectAssets :exec
 DELETE FROM asset_nodes
-WHERE project_id = ?
+WHERE project_id = $1
 `
 
 func (q *Queries) DeleteProjectAssets(ctx context.Context, projectID string) error {
@@ -259,7 +259,7 @@ SELECT
     created_at,
     updated_at
 FROM asset_nodes
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) GetAssetNode(ctx context.Context, id string) (AssetNode, error) {
@@ -304,7 +304,7 @@ SELECT
     created_at,
     updated_at
 FROM projects
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -350,11 +350,11 @@ SELECT
     updated_at
 FROM asset_nodes
 WHERE
-    project_id = ?1
-    AND name = ?2
+    project_id = $1
+    AND name = $2
     AND (
-        parent_id = ?3
-        OR (parent_id IS NULL AND ?3 IS NULL)
+        parent_id = $3
+        OR (parent_id IS NULL AND $3 IS NULL)
     )
 LIMIT 1
 `
@@ -406,7 +406,7 @@ SELECT
     created_at,
     updated_at
 FROM asset_nodes
-WHERE project_id = ? AND path = ?
+WHERE project_id = $1 AND path = $2
 `
 
 type GetProjectAssetByPathParams struct {
@@ -456,7 +456,7 @@ SELECT
     created_at,
     updated_at
 FROM projects
-WHERE id != ? AND (slug = ? OR name = ?)
+WHERE id != $1 AND (slug = $2 OR name = $3)
 LIMIT 1
 `
 
@@ -509,12 +509,12 @@ SELECT
     updated_at
 FROM asset_nodes
 WHERE
-    project_id = ?1
-    AND node_type = ?2
-    AND target_ref = ?3
+    project_id = $1
+    AND node_type = $2
+    AND target_ref = $3
     AND (
-        parent_id = ?4
-        OR (parent_id IS NULL AND ?4 IS NULL)
+        parent_id = $4
+        OR (parent_id IS NULL AND $4 IS NULL)
     )
 LIMIT 1
 `
@@ -572,7 +572,7 @@ SELECT
     created_at,
     updated_at
 FROM asset_nodes
-WHERE project_id = ? AND (id = ? OR path LIKE ?)
+WHERE project_id = $1 AND (id = $2 OR path LIKE $3)
 ORDER BY path DESC
 `
 
@@ -639,7 +639,7 @@ SELECT
     created_at,
     updated_at
 FROM asset_nodes
-WHERE project_id = ?
+WHERE project_id = $1
 ORDER BY path
 `
 
@@ -747,15 +747,15 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 const updateAssetNode = `-- name: UpdateAssetNode :one
 UPDATE asset_nodes
 SET
-    parent_id = ?,
-    name = ?,
-    path = ?,
-    sla_tracking_enabled = ?,
-    sla_reporting_enabled = ?,
-    grace_period_enabled = ?,
-    grace_period_percent = ?,
-    updated_at = ?
-WHERE id = ?
+    parent_id = $1,
+    name = $2,
+    path = $3,
+    sla_tracking_enabled = $4,
+    sla_reporting_enabled = $5,
+    grace_period_enabled = $6,
+    grace_period_percent = $7,
+    updated_at = $8
+WHERE id = $9
 RETURNING
     id,
     project_id,
@@ -822,9 +822,9 @@ func (q *Queries) UpdateAssetNode(ctx context.Context, arg UpdateAssetNodeParams
 const updateAssetPath = `-- name: UpdateAssetPath :exec
 UPDATE asset_nodes
 SET
-    path = ?,
-    updated_at = ?
-WHERE id = ?
+    path = $1,
+    updated_at = $2
+WHERE id = $3
 `
 
 type UpdateAssetPathParams struct {
@@ -841,9 +841,9 @@ func (q *Queries) UpdateAssetPath(ctx context.Context, arg UpdateAssetPathParams
 const updateAssetTargetRef = `-- name: UpdateAssetTargetRef :exec
 UPDATE asset_nodes
 SET
-    target_ref = ?,
-    updated_at = ?
-WHERE id = ?
+    target_ref = $1,
+    updated_at = $2
+WHERE id = $3
 `
 
 type UpdateAssetTargetRefParams struct {
@@ -860,15 +860,15 @@ func (q *Queries) UpdateAssetTargetRef(ctx context.Context, arg UpdateAssetTarge
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET
-    slug = ?,
-    name = ?,
-    sla_tracking_enabled = ?,
-    sla_reporting_enabled = ?,
-    grace_period_enabled = ?,
-    grace_period_percent = ?,
-    require_peer_review_for_status_changes = ?,
-    updated_at = ?
-WHERE id = ?
+    slug = $1,
+    name = $2,
+    sla_tracking_enabled = $3,
+    sla_reporting_enabled = $4,
+    grace_period_enabled = $5,
+    grace_period_percent = $6,
+    require_peer_review_for_status_changes = $7,
+    updated_at = $8
+WHERE id = $9
 RETURNING
     id,
     slug,

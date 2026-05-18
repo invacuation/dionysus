@@ -8,7 +8,7 @@ SELECT
     created_at,
     updated_at
 FROM machine_tokens
-WHERE token_digest = ?;
+WHERE token_digest = $1;
 
 -- name: GetMachineCredential :one
 SELECT
@@ -21,7 +21,7 @@ SELECT
     created_at,
     updated_at
 FROM machine_credentials
-WHERE id = ?;
+WHERE id = $1;
 
 -- name: GetMachineCredentialByClientID :one
 SELECT
@@ -34,7 +34,7 @@ SELECT
     created_at,
     updated_at
 FROM machine_credentials
-WHERE client_id = ?;
+WHERE client_id = $1;
 
 -- name: ListMachineCredentials :many
 SELECT
@@ -58,7 +58,7 @@ INSERT INTO machine_credentials (
     is_active,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING
     id,
     name,
@@ -72,9 +72,9 @@ RETURNING
 -- name: UpdateMachineCredentialSecret :one
 UPDATE machine_credentials
 SET
-    client_secret_digest = ?,
-    updated_at = ?
-WHERE id = ?
+    client_secret_digest = $1,
+    updated_at = $2
+WHERE id = $3
 RETURNING
     id,
     name,
@@ -89,9 +89,9 @@ RETURNING
 UPDATE machine_credentials
 SET
     is_active = false,
-    revoked_at = ?,
-    updated_at = ?
-WHERE id = ?
+    revoked_at = $1,
+    updated_at = $2
+WHERE id = $3
 RETURNING
     id,
     name,
@@ -105,16 +105,16 @@ RETURNING
 -- name: RevokeMachineAccessTokensForCredential :exec
 UPDATE machine_tokens
 SET
-    revoked_at = ?,
-    updated_at = ?
-WHERE machine_credential_id = ? AND revoked_at IS NULL;
+    revoked_at = $1,
+    updated_at = $2
+WHERE machine_credential_id = $3 AND revoked_at IS NULL;
 
 -- name: RevokeMachineRefreshTokensForCredential :exec
 UPDATE machine_refresh_tokens
 SET
-    revoked_at = ?,
-    updated_at = ?
-WHERE machine_credential_id = ? AND revoked_at IS NULL;
+    revoked_at = $1,
+    updated_at = $2
+WHERE machine_credential_id = $3 AND revoked_at IS NULL;
 
 -- name: CreateMachineToken :one
 INSERT INTO machine_tokens (
@@ -124,7 +124,7 @@ INSERT INTO machine_tokens (
     expires_at,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     machine_credential_id,
@@ -142,7 +142,7 @@ INSERT INTO machine_refresh_tokens (
     expires_at,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     machine_credential_id,
@@ -162,14 +162,14 @@ SELECT
     created_at,
     updated_at
 FROM machine_refresh_tokens
-WHERE token_digest = ?;
+WHERE token_digest = $1;
 
 -- name: RevokeMachineRefreshToken :one
 UPDATE machine_refresh_tokens
 SET
-    revoked_at = ?,
-    updated_at = ?
-WHERE id = ?
+    revoked_at = $1,
+    updated_at = $2
+WHERE id = $3
 RETURNING
     id,
     machine_credential_id,

@@ -25,7 +25,7 @@ INSERT INTO import_attempts (
     metadata_json,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING
     id,
     project_id,
@@ -101,7 +101,7 @@ INSERT INTO project_vulnerability_groups (
     dedupe_key,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (project_id, dedupe_key) DO UPDATE SET
     severity = excluded.severity,
     updated_at = excluded.updated_at
@@ -187,7 +187,7 @@ INSERT INTO raw_finding_instances (
     source_json,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 ON CONFLICT (scan_target_id, dedupe_key) DO UPDATE SET
     scan_id = excluded.scan_id,
     last_seen_at = excluded.last_seen_at,
@@ -322,7 +322,7 @@ INSERT INTO scans (
     metadata_json,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING
     id,
     project_id,
@@ -409,7 +409,7 @@ LEFT JOIN users ON users.id = import_attempts.uploader_principal_id
 LEFT JOIN machine_credentials ON machine_credentials.id = import_attempts.uploader_principal_id
     AND import_attempts.uploader_principal_type = 'machine'
 ORDER BY import_attempts.created_at DESC
-LIMIT ?
+LIMIT $1
 `
 
 type ListAdminImportAttemptsRow struct {
@@ -432,7 +432,7 @@ type ListAdminImportAttemptsRow struct {
 	UpdatedAt             time.Time
 }
 
-func (q *Queries) ListAdminImportAttempts(ctx context.Context, limit int64) ([]ListAdminImportAttemptsRow, error) {
+func (q *Queries) ListAdminImportAttempts(ctx context.Context, limit int32) ([]ListAdminImportAttemptsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAdminImportAttempts, limit)
 	if err != nil {
 		return nil, err

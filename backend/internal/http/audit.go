@@ -90,10 +90,10 @@ func auditLogQueryParams(r *http.Request, createdFrom *time.Time, createdTo *tim
 	projectID := query.Get("project_id")
 	targetType := query.Get("target_type")
 	targetID := query.Get("target_id")
-	limit := int64(50)
+	limit := int32(50)
 	if rawLimit := query.Get("limit"); rawLimit != "" {
-		if parsed, err := strconv.ParseInt(rawLimit, 10, 64); err == nil && parsed > 0 {
-			limit = parsed
+		if parsed, err := strconv.ParseInt(rawLimit, 10, 32); err == nil && parsed > 0 {
+			limit = int32(parsed)
 		}
 	}
 	if limit > maxAuditLimit {

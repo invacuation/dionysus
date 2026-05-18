@@ -10,10 +10,13 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
 const schemaVersion = "001"
+const driverPostgres = "pgx"
+const driverSQLite = "sqlite"
 
 //go:embed schema.sql
 var schemaSQL string
@@ -29,7 +32,7 @@ func Open(databaseURL string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	if driver == "sqlite" {
+	if driver == driverSQLite {
 		conn.SetMaxOpenConns(1)
 		conn.SetMaxIdleConns(1)
 	}
@@ -63,16 +66,20 @@ func Migrate(ctx context.Context, conn *sql.DB) error {
 		return err
 	}
 	now := time.Now().UTC()
-	if _, err := conn.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", schemaVersion, now); err != nil {
+	statement := "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)"
+	if driver == driverSQLite {
+		statement = "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)"
+	}
+	if _, err := conn.ExecContext(ctx, statement, schemaVersion, now); err != nil {
 		return fmt.Errorf("record schema migration: %w", err)
 	}
 	return nil
 }
 
 func ensureSchemaMigrations(ctx context.Context, conn *sql.DB, driver string) error {
-	appliedAtType := "DATETIME"
-	if driver == "pgx-qmark" {
-		appliedAtType = "TIMESTAMPTZ"
+	appliedAtType := "TIMESTAMPTZ"
+	if driver == driverSQLite {
+		appliedAtType = "DATETIME"
 	}
 	statement := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version VARCHAR(120) PRIMARY KEY NOT NULL,
@@ -93,7 +100,11 @@ func migrationApplied(ctx context.Context, conn *sql.DB, driver string, version 
 		return false, nil
 	}
 	var found string
-	if err := conn.QueryRowContext(ctx, "SELECT version FROM schema_migrations WHERE version = ?", version).Scan(&found); err != nil {
+	query := "SELECT version FROM schema_migrations WHERE version = $1"
+	if driver == driverSQLite {
+		query = "SELECT version FROM schema_migrations WHERE version = ?"
+	}
+	if err := conn.QueryRowContext(ctx, query, version).Scan(&found); err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
@@ -103,9 +114,9 @@ func migrationApplied(ctx context.Context, conn *sql.DB, driver string, version 
 }
 
 func databaseEmpty(ctx context.Context, conn *sql.DB, driver string) (bool, error) {
-	query := "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-	if driver == "pgx-qmark" {
-		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+	query := "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+	if driver == driverSQLite {
+		query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 	}
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
@@ -129,9 +140,9 @@ func databaseEmpty(ctx context.Context, conn *sql.DB, driver string) (bool, erro
 
 func tableExists(ctx context.Context, conn *sql.DB, driver string, name string) (bool, error) {
 	var found string
-	query := "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
-	if driver == "pgx-qmark" {
-		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?"
+	query := "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1"
+	if driver == driverSQLite {
+		query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
 	}
 	err := conn.QueryRowContext(ctx, query, name).Scan(&found)
 	if err == sql.ErrNoRows {
@@ -153,24 +164,24 @@ func driverFor(conn *sql.DB) (string, error) {
 }
 
 func initialSchemaSQL(driver string) string {
-	if driver != "pgx-qmark" {
-		return schemaSQL
+	if driver == driverSQLite {
+		return sqliteSchemaSQL(schemaSQL)
 	}
-	return strings.ReplaceAll(schemaSQL, "DATETIME", "TIMESTAMPTZ")
+	return schemaSQL
 }
 
 func DriverAndDSN(databaseURL string) (string, string, error) {
 	switch {
 	case databaseURL == "sqlite:///:memory:":
-		return "sqlite", ":memory:", nil
+		return driverSQLite, ":memory:", nil
 	case strings.HasPrefix(databaseURL, "sqlite:///"):
-		return "sqlite", strings.TrimPrefix(databaseURL, "sqlite:///"), nil
+		return driverSQLite, strings.TrimPrefix(databaseURL, "sqlite:///"), nil
 	case strings.HasPrefix(databaseURL, "postgresql+psycopg://"):
-		return "pgx-qmark", "postgresql://" + strings.TrimPrefix(databaseURL, "postgresql+psycopg://"), nil
+		return driverPostgres, "postgresql://" + strings.TrimPrefix(databaseURL, "postgresql+psycopg://"), nil
 	case strings.HasPrefix(databaseURL, "postgresql://"):
-		return "pgx-qmark", databaseURL, nil
+		return driverPostgres, databaseURL, nil
 	case strings.HasPrefix(databaseURL, "postgres://"):
-		return "pgx-qmark", databaseURL, nil
+		return driverPostgres, databaseURL, nil
 	default:
 		return "", "", fmt.Errorf("unsupported database URL: %s", databaseURL)
 	}

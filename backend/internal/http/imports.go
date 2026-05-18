@@ -907,11 +907,11 @@ func cvssVersion(sourceCVSS map[string]any, prefix string) map[string]any {
 	return version
 }
 
-func importHistoryLimit(r *http.Request) int64 {
-	limit := int64(50)
+func importHistoryLimit(r *http.Request) int32 {
+	limit := int32(50)
 	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			limit = parsed
+		if parsed, err := strconv.ParseInt(raw, 10, 32); err == nil && parsed > 0 {
+			limit = int32(parsed)
 		}
 	}
 	if limit > 200 {
