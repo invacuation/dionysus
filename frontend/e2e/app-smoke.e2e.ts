@@ -40,6 +40,27 @@ async function mockAuthenticatedApi(page: Page): Promise<void> {
         session_id: "session-1",
         machine_token_id: null,
         mixed_credentials_present: false,
+        bearer_token_present: false,
+        session_cookie_present: true,
+        local_auth_enabled: true,
+        capabilities: {
+          navigation: {
+            overview: true,
+            findings: true,
+            inventory: true,
+            imports: false,
+            admin: false,
+          },
+          admin: {
+            access: false,
+            audit_log: false,
+            import_history: false,
+            machine_credentials: false,
+            permission_tester: false,
+            sessions: false,
+            security_settings: false,
+          },
+        },
       },
     })
   })

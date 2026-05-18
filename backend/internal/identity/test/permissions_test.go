@@ -106,6 +106,197 @@ func TestCheckPermissionDenyOverridesGroupGrant(t *testing.T) {
 	}
 }
 
+func TestCheckPermissionAllowsScopedRequestFromUnscopedGroupGrant(t *testing.T) {
+	conn := openPermissionTestDB(t)
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	insertGroup(t, conn, groupFixture{
+		ID:          "group-1",
+		Name:        "users",
+		DisplayName: "Users",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	insertGroupMembership(t, conn, groupMembershipFixture{
+		ID:            "membership-1",
+		GroupID:       "group-1",
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-1",
+		PrincipalType: PrincipalTypeGroup,
+		PrincipalID:   "group-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectAllow,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+
+	check, err := CheckPermission(context.Background(), conn, PermissionRequest{
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "finding:view",
+		ScopeType:     stringPtr("project"),
+		ScopeID:       stringPtr("project-1"),
+	})
+	if err != nil {
+		t.Fatalf("CheckPermission() returned error: %v", err)
+	}
+	if !check.Allowed {
+		t.Fatalf("Allowed = false, explanation: %s", check.Explanation)
+	}
+}
+
+func TestCheckPermissionScopedDenyOverridesUnscopedGroupGrant(t *testing.T) {
+	conn := openPermissionTestDB(t)
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	insertGroup(t, conn, groupFixture{
+		ID:          "group-1",
+		Name:        "users",
+		DisplayName: "Users",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	insertGroupMembership(t, conn, groupMembershipFixture{
+		ID:            "membership-1",
+		GroupID:       "group-1",
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-1",
+		PrincipalType: PrincipalTypeGroup,
+		PrincipalID:   "group-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectAllow,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-2",
+		PrincipalType: PrincipalTypeGroup,
+		PrincipalID:   "group-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectDeny,
+		ScopeType:     sql.NullString{String: "project", Valid: true},
+		ScopeID:       sql.NullString{String: "project-1", Valid: true},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+
+	check, err := CheckPermission(context.Background(), conn, PermissionRequest{
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "finding:view",
+		ScopeType:     stringPtr("project"),
+		ScopeID:       stringPtr("project-1"),
+	})
+	if err != nil {
+		t.Fatalf("CheckPermission() returned error: %v", err)
+	}
+	if check.Allowed {
+		t.Fatal("Allowed = true, want false")
+	}
+	if !check.Denied {
+		t.Fatal("Denied = false, want true")
+	}
+}
+
+func TestActorHasAnyScopedPermissionUsesAssignmentsWithoutProjectScan(t *testing.T) {
+	conn := openPermissionTestDB(t)
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	insertGroup(t, conn, groupFixture{
+		ID:          "group-1",
+		Name:        "users",
+		DisplayName: "Users",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	insertGroupMembership(t, conn, groupMembershipFixture{
+		ID:            "membership-1",
+		GroupID:       "group-1",
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-1",
+		PrincipalType: PrincipalTypeGroup,
+		PrincipalID:   "group-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectAllow,
+		ScopeType:     sql.NullString{String: "project", Valid: true},
+		ScopeID:       sql.NullString{String: "project-1", Valid: true},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-2",
+		PrincipalType: PrincipalTypeGroup,
+		PrincipalID:   "group-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectDeny,
+		ScopeType:     sql.NullString{String: "project", Valid: true},
+		ScopeID:       sql.NullString{String: "project-2", Valid: true},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+
+	allowed, err := ActorHasAnyScopedPermission(context.Background(), conn, AuthenticatedActor{
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+	}, "finding:view", "project")
+	if err != nil {
+		t.Fatalf("ActorHasAnyScopedPermission() returned error: %v", err)
+	}
+	if !allowed {
+		t.Fatal("allowed = false, want true")
+	}
+}
+
+func TestActorHasAnyScopedPermissionRejectsOnlyDeniedScopes(t *testing.T) {
+	conn := openPermissionTestDB(t)
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-1",
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectAllow,
+		ScopeType:     sql.NullString{String: "project", Valid: true},
+		ScopeID:       sql.NullString{String: "project-1", Valid: true},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertPermissionAssignment(t, conn, permissionAssignmentFixture{
+		ID:            "assignment-2",
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "finding:view",
+		Effect:        PermissionEffectDeny,
+		ScopeType:     sql.NullString{String: "project", Valid: true},
+		ScopeID:       sql.NullString{String: "project-1", Valid: true},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+
+	allowed, err := ActorHasAnyScopedPermission(context.Background(), conn, AuthenticatedActor{
+		PrincipalType: PrincipalTypeUser,
+		PrincipalID:   "user-1",
+	}, "finding:view", "project")
+	if err != nil {
+		t.Fatalf("ActorHasAnyScopedPermission() returned error: %v", err)
+	}
+	if allowed {
+		t.Fatal("allowed = true, want false")
+	}
+}
+
 func TestCheckPermissionAllowsNestedGroupGrant(t *testing.T) {
 	conn := openPermissionTestDB(t)
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)

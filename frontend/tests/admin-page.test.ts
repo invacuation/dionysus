@@ -19,8 +19,14 @@ import {
   permissionTesterPrincipalOptions,
   normalizeSecuritySettingsForm,
   scopeOptionsForAccess,
+  visibleAdminTabsForCapabilities,
 } from "../src/features/admin/admin-page"
-import type { AccessListResponse, AdminImportAttempt, AuditLogEntry } from "../src/lib/api"
+import type {
+  AccessListResponse,
+  ActorMetadata,
+  AdminImportAttempt,
+  AuditLogEntry,
+} from "../src/lib/api"
 
 const baseEvent: AuditLogEntry = {
   id: "audit-1",
@@ -95,6 +101,25 @@ const accessList: AccessListResponse = {
   permission_assignments: [],
   available_permissions: ["finding:view", "import:upload"],
 }
+
+describe("visibleAdminTabsForCapabilities", () => {
+  test("omits admin tabs the current actor cannot access", () => {
+    const capabilities: ActorMetadata["capabilities"]["admin"] = {
+      access: false,
+      audit_log: true,
+      import_history: false,
+      machine_credentials: false,
+      permission_tester: false,
+      sessions: true,
+      security_settings: false,
+    }
+
+    expect(visibleAdminTabsForCapabilities(capabilities).map((tab) => tab.id)).toEqual([
+      "audit-log",
+      "sessions",
+    ])
+  })
+})
 
 describe("filterAuditLogEvents", () => {
   test("filters by actor display, principal type, and principal id", () => {

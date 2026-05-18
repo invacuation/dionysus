@@ -15,18 +15,42 @@ import (
 const sessionCookieName = "dionysus_session"
 
 type actorResponse struct {
-	ActorType               string  `json:"actor_type"`
-	ActorID                 string  `json:"actor_id"`
-	DisplayName             string  `json:"display_name"`
-	PrincipalType           string  `json:"principal_type"`
-	PrincipalID             string  `json:"principal_id"`
-	AuthMethod              string  `json:"auth_method"`
-	SessionID               *string `json:"session_id"`
-	MachineTokenID          *string `json:"machine_token_id"`
-	MixedCredentialsPresent bool    `json:"mixed_credentials_present"`
-	BearerTokenPresent      bool    `json:"bearer_token_present"`
-	SessionCookiePresent    bool    `json:"session_cookie_present"`
-	LocalAuthEnabled        bool    `json:"local_auth_enabled"`
+	ActorType               string                    `json:"actor_type"`
+	ActorID                 string                    `json:"actor_id"`
+	DisplayName             string                    `json:"display_name"`
+	PrincipalType           string                    `json:"principal_type"`
+	PrincipalID             string                    `json:"principal_id"`
+	AuthMethod              string                    `json:"auth_method"`
+	SessionID               *string                   `json:"session_id"`
+	MachineTokenID          *string                   `json:"machine_token_id"`
+	MixedCredentialsPresent bool                      `json:"mixed_credentials_present"`
+	BearerTokenPresent      bool                      `json:"bearer_token_present"`
+	SessionCookiePresent    bool                      `json:"session_cookie_present"`
+	LocalAuthEnabled        bool                      `json:"local_auth_enabled"`
+	Capabilities            actorCapabilitiesResponse `json:"capabilities"`
+}
+
+type actorCapabilitiesResponse struct {
+	Navigation actorNavigationCapabilitiesResponse `json:"navigation"`
+	Admin      actorAdminCapabilitiesResponse      `json:"admin"`
+}
+
+type actorNavigationCapabilitiesResponse struct {
+	Overview  bool `json:"overview"`
+	Findings  bool `json:"findings"`
+	Inventory bool `json:"inventory"`
+	Imports   bool `json:"imports"`
+	Admin     bool `json:"admin"`
+}
+
+type actorAdminCapabilitiesResponse struct {
+	Access             bool `json:"access"`
+	AuditLog           bool `json:"audit_log"`
+	ImportHistory      bool `json:"import_history"`
+	MachineCredentials bool `json:"machine_credentials"`
+	PermissionTester   bool `json:"permission_tester"`
+	Sessions           bool `json:"sessions"`
+	SecuritySettings   bool `json:"security_settings"`
 }
 
 type loginRequest struct {
@@ -136,6 +160,7 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, settings confi
 		BearerTokenPresent:      false,
 		SessionCookiePresent:    true,
 		LocalAuthEnabled:        settings.LocalAuthEnabled,
+		Capabilities:            emptyActorCapabilities(),
 	})
 }
 
@@ -224,6 +249,11 @@ func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Set
 		writeError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
+	capabilities, err := actorCapabilities(r, deps, *actor)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, actorResponse{
 		ActorType:               actor.ActorType,
@@ -238,7 +268,109 @@ func getCurrentActor(w http.ResponseWriter, r *http.Request, settings config.Set
 		BearerTokenPresent:      actor.BearerTokenPresent,
 		SessionCookiePresent:    actor.SessionCookiePresent,
 		LocalAuthEnabled:        settings.LocalAuthEnabled,
+		Capabilities:            capabilities,
 	})
+}
+
+func emptyActorCapabilities() actorCapabilitiesResponse {
+	return actorCapabilitiesResponse{
+		Navigation: actorNavigationCapabilitiesResponse{},
+		Admin:      actorAdminCapabilitiesResponse{},
+	}
+}
+
+func actorCapabilities(r *http.Request, deps Dependencies, actor identity.AuthenticatedActor) (actorCapabilitiesResponse, error) {
+	admin, err := actorAdminCapabilities(r, deps, actor)
+	if err != nil {
+		return actorCapabilitiesResponse{}, err
+	}
+	overview, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "report:view"})
+	if err != nil {
+		return actorCapabilitiesResponse{}, err
+	}
+	inventory, err := actorCanAccessInventory(r, deps, actor)
+	if err != nil {
+		return actorCapabilitiesResponse{}, err
+	}
+	findings, err := identity.ActorHasAnyScopedPermission(r.Context(), deps.DB, actor, "finding:view", "project")
+	if err != nil {
+		return actorCapabilitiesResponse{}, err
+	}
+	imports, err := identity.ActorHasAnyScopedPermission(r.Context(), deps.DB, actor, "import:upload", "project")
+	if err != nil {
+		return actorCapabilitiesResponse{}, err
+	}
+	return actorCapabilitiesResponse{
+		Navigation: actorNavigationCapabilitiesResponse{
+			Overview:  overview,
+			Findings:  findings,
+			Inventory: inventory,
+			Imports:   imports,
+			Admin:     admin.hasAny(),
+		},
+		Admin: admin,
+	}, nil
+}
+
+func actorCanAccessInventory(r *http.Request, deps Dependencies, actor identity.AuthenticatedActor) (bool, error) {
+	canCreate, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "project:create"})
+	if err != nil {
+		return false, err
+	}
+	if canCreate {
+		return true, nil
+	}
+	return identity.ActorHasAnyScopedPermission(r.Context(), deps.DB, actor, "project:view", "project")
+}
+
+func actorAdminCapabilities(r *http.Request, deps Dependencies, actor identity.AuthenticatedActor) (actorAdminCapabilitiesResponse, error) {
+	access, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "access:manage"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	auditLog, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "audit_log:view"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	importHistory, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "import:history:view"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	machineCredentials, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "credential:manage"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	permissionTester, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "permission:test"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	sessions, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "session:manage"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	securitySettings, err := identity.ActorHasPermission(r.Context(), deps.DB, actor, identity.PermissionRequest{Permission: "security_settings:manage"})
+	if err != nil {
+		return actorAdminCapabilitiesResponse{}, err
+	}
+	return actorAdminCapabilitiesResponse{
+		Access:             access,
+		AuditLog:           auditLog,
+		ImportHistory:      importHistory,
+		MachineCredentials: machineCredentials,
+		PermissionTester:   permissionTester,
+		Sessions:           sessions,
+		SecuritySettings:   securitySettings,
+	}, nil
+}
+
+func (capabilities actorAdminCapabilitiesResponse) hasAny() bool {
+	return capabilities.Access ||
+		capabilities.AuditLog ||
+		capabilities.ImportHistory ||
+		capabilities.MachineCredentials ||
+		capabilities.PermissionTester ||
+		capabilities.Sessions ||
+		capabilities.SecuritySettings
 }
 
 // Change the current user's password.

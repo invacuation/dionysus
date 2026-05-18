@@ -1,7 +1,13 @@
 import { useEffect, useLayoutEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { AppShell, type AppRoute } from "@/components/app-shell"
+import {
+  actorCanNavigate,
+  AppShell,
+  homeRouteForActor,
+  visibleNavItemsForActor,
+  type AppRoute,
+} from "@/components/app-shell"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminPage } from "@/features/admin/admin-page"
 import { LoginPage } from "@/features/auth/login-page"
@@ -9,7 +15,7 @@ import { FindingsPage } from "@/features/findings/findings-page"
 import { ImportsPage } from "@/features/imports/imports-page"
 import { InventoryPage } from "@/features/inventory/inventory-page"
 import { OverviewPage } from "@/features/overview/overview-page"
-import { ApiError, getCurrentActor, login, logout } from "@/lib/api"
+import { ApiError, getCurrentActor, login, logout, type ActorMetadata } from "@/lib/api"
 import {
   applyThemeMode,
   loadThemeMode,
@@ -69,6 +75,19 @@ export function App() {
     applyThemeMode(document.documentElement, resolveThemeMode(themeMode, systemPrefersDark))
   }, [systemPrefersDark, themeMode])
 
+  useEffect(() => {
+    const actor = currentActorQuery.data
+    if (!actor) {
+      return
+    }
+    const visibleRoute = routeVisibleToActor(activeRoute, actor)
+    if (visibleRoute === activeRoute) {
+      return
+    }
+    window.history.replaceState({}, "", routePath(visibleRoute))
+    setActiveRoute(visibleRoute)
+  }, [activeRoute, currentActorQuery.data])
+
   function navigate(route: AppRoute) {
     const path = routePath(route)
     window.history.pushState({}, "", path)
@@ -119,29 +138,52 @@ export function App() {
     )
   }
 
+  const actor = currentActorQuery.data
+  const visibleRoute = routeVisibleToActor(activeRoute, actor)
+  const visibleNavItems = visibleNavItemsForActor(actor)
+
   return (
     <AppShell
-      activeRoute={activeRoute}
-      actor={currentActorQuery.data}
+      activeRoute={visibleRoute}
+      actor={actor}
       isLoggingOut={logoutMutation.isPending}
       themeMode={themeMode}
       onNavigate={navigate}
       onLogout={() => logoutMutation.mutate()}
       onThemeModeChange={changeThemeMode}
     >
-      {activeRoute === "findings" ? (
-        <FindingsPage currentActor={currentActorQuery.data} />
-      ) : activeRoute === "inventory" ? (
+      {visibleNavItems.length === 0 ? (
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-base">No accessible areas</CardTitle>
+            <CardDescription>
+              Your account is authenticated but does not have access to any application areas.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : visibleRoute === "findings" ? (
+        <FindingsPage currentActor={actor} />
+      ) : visibleRoute === "inventory" ? (
         <InventoryPage />
-      ) : activeRoute === "imports" ? (
+      ) : visibleRoute === "imports" ? (
         <ImportsPage />
-      ) : activeRoute === "admin" ? (
-        <AdminPage localAuthEnabled={currentActorQuery.data.local_auth_enabled} />
+      ) : visibleRoute === "admin" ? (
+        <AdminPage
+          adminCapabilities={actor.capabilities.admin}
+          localAuthEnabled={actor.local_auth_enabled}
+        />
       ) : (
         <OverviewPage />
       )}
     </AppShell>
   )
+}
+
+function routeVisibleToActor(route: AppRoute, actor: ActorMetadata): AppRoute {
+  if (actorCanNavigate(actor, route)) {
+    return route
+  }
+  return homeRouteForActor(actor) ?? route
 }
 
 function routeFromLocation(): AppRoute {

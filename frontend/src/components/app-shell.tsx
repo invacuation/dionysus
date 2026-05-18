@@ -39,6 +39,21 @@ const navItems = [
   { label: "Admin", icon: SlidersHorizontal, route: "admin" as const, href: "/admin" },
 ]
 
+export function visibleNavItemsForActor(actor: ActorMetadata): typeof navItems {
+  return navItems.filter((item) => actorCanNavigate(actor, item.route))
+}
+
+export function homeRouteForActor(actor: ActorMetadata): AppRoute | null {
+  if (actorCanNavigate(actor, "findings")) {
+    return "findings"
+  }
+  return visibleNavItemsForActor(actor)[0]?.route ?? null
+}
+
+export function actorCanNavigate(actor: ActorMetadata, route: AppRoute): boolean {
+  return actor.capabilities.navigation[route]
+}
+
 export function appVersionLabel(version: string): string {
   return `v${version}`
 }
@@ -56,6 +71,7 @@ export function AppShell({
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
+  const visibleNavItems = visibleNavItemsForActor(actor)
   const changePasswordMutation = useMutation({
     mutationFn: changeCurrentUserPassword,
     onSuccess: () => {
@@ -93,7 +109,10 @@ export function AppShell({
           <Separator className="my-4 hidden lg:block" />
 
           <nav className="flex gap-2 overflow-x-auto lg:grid lg:overflow-visible">
-            {navItems.map((item) => (
+            {visibleNavItems.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">No areas available</p>
+            ) : null}
+            {visibleNavItems.map((item) => (
               <a
                 aria-current={activeRoute === item.route ? "page" : undefined}
                 className={cn(

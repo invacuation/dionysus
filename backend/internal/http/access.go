@@ -73,6 +73,26 @@ var protectedAccessGroups = []protectedAccessGroup{
 			"report:view",
 		},
 	},
+	{
+		Name:        "importers",
+		DisplayName: "Importers",
+		Permissions: []string{
+			"asset:create",
+			"import:upload",
+			"project:view",
+		},
+	},
+	{
+		Name:        "auditors",
+		DisplayName: "Auditors",
+		Permissions: []string{
+			"audit_log:view",
+			"finding:view",
+			"import:history:view",
+			"project:view",
+			"report:view",
+		},
+	},
 }
 
 type accessListResponse struct {

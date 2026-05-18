@@ -76,6 +76,129 @@ func TestAuthMeReturnsMachineActorForBearerToken(t *testing.T) {
 	}
 }
 
+func TestAuthMeReturnsCurrentActorCapabilities(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: argon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	projectID := insertHTTPProject(t, conn, httpProjectFixture{
+		ID:                  "capabilities-project",
+		Slug:                "capabilities-project",
+		Name:                "Capabilities Project",
+		SLATrackingEnabled:  true,
+		SLAReportingEnabled: true,
+		GracePeriodPercent:  100,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{
+		ID:            "project-view",
+		PrincipalType: identity.PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "project:view",
+		Effect:        identity.PermissionEffectAllow,
+		ScopeType:     ptr("project"),
+		ScopeID:       ptr(projectID),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{
+		ID:            "finding-view",
+		PrincipalType: identity.PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    "finding:view",
+		Effect:        identity.PermissionEffectAllow,
+		ScopeType:     ptr("project"),
+		ScopeID:       ptr(projectID),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, router, "correct horse battery staple")
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	for _, cookie := range loginResponse.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body actorResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Capabilities.Navigation.Findings || !body.Capabilities.Navigation.Inventory {
+		t.Fatalf("navigation capabilities = %#v, want findings and inventory", body.Capabilities.Navigation)
+	}
+	if body.Capabilities.Navigation.Imports || body.Capabilities.Navigation.Admin {
+		t.Fatalf("navigation capabilities = %#v, want imports and admin hidden", body.Capabilities.Navigation)
+	}
+	if body.Capabilities.Admin.AuditLog || body.Capabilities.Admin.Access {
+		t.Fatalf("admin capabilities = %#v, want no admin tabs", body.Capabilities.Admin)
+	}
+}
+
+func TestAuthMeTreatsAdminWildcardAsProjectAreaAccess(t *testing.T) {
+	conn := openSessionHTTPTestDB(t)
+	now := time.Now().UTC()
+	insertHTTPUser(t, conn, httpUserFixture{
+		ID:           "user-1",
+		Username:     "alice",
+		DisplayName:  "Alice",
+		IsActive:     true,
+		PasswordHash: argon2PasswordHash,
+		CreatedAt:    now.Add(-time.Hour),
+		UpdatedAt:    now.Add(-time.Hour),
+	})
+	insertHTTPPermission(t, conn, httpPermissionFixture{
+		ID:            "admin",
+		PrincipalType: identity.PrincipalTypeUser,
+		PrincipalID:   "user-1",
+		Permission:    identity.AdminPermission,
+		Effect:        identity.PermissionEffectAllow,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	router := NewRouter(config.Settings{
+		SessionIdleTimeoutMinutes:     30,
+		SessionAbsoluteTimeoutMinutes: 480,
+		LocalAuthEnabled:              true,
+	}, WithDB(conn))
+	loginResponse := loginHTTPUser(t, router, "correct horse battery staple")
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	for _, cookie := range loginResponse.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body actorResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Capabilities.Navigation.Findings || !body.Capabilities.Navigation.Imports || !body.Capabilities.Navigation.Admin {
+		t.Fatalf("navigation capabilities = %#v, want admin wildcard project areas", body.Capabilities.Navigation)
+	}
+}
+
 func TestAuthMeRejectsMissingCredentials(t *testing.T) {
 	conn := openOAuthTestDB(t)
 	router := NewRouter(config.Settings{}, WithDB(conn))

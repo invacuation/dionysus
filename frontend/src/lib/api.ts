@@ -396,6 +396,30 @@ export type ActorMetadata = {
   bearer_token_present: boolean
   session_cookie_present: boolean
   local_auth_enabled: boolean
+  capabilities: ActorCapabilities
+}
+
+export type ActorCapabilities = {
+  navigation: ActorNavigationCapabilities
+  admin: ActorAdminCapabilities
+}
+
+export type ActorNavigationCapabilities = {
+  overview: boolean
+  findings: boolean
+  inventory: boolean
+  imports: boolean
+  admin: boolean
+}
+
+export type ActorAdminCapabilities = {
+  access: boolean
+  audit_log: boolean
+  import_history: boolean
+  machine_credentials: boolean
+  permission_tester: boolean
+  sessions: boolean
+  security_settings: boolean
 }
 
 export type LoginCredentials = {
