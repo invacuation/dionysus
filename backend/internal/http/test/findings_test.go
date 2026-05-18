@@ -216,7 +216,7 @@ func TestFindingStatusPeerReviewApproveAndSelfReviewBlock(t *testing.T) {
 	if selfReview.Code != http.StatusBadRequest {
 		t.Fatalf("self review status = %d, want %d; body = %s", selfReview.Code, http.StatusBadRequest, selfReview.Body.String())
 	}
-	insertHTTPUser(t, conn, httpUserFixture{ID: "user-2", Username: "bob", DisplayName: "Bob", IsActive: true, PasswordHash: pythonArgon2PasswordHash, CreatedAt: now, UpdatedAt: now})
+	insertHTTPUser(t, conn, httpUserFixture{ID: "user-2", Username: "bob", DisplayName: "Bob", IsActive: true, PasswordHash: argon2PasswordHash, CreatedAt: now, UpdatedAt: now})
 	insertScopedHTTPPermission(t, conn, httpScopedPermissionFixture{ID: "finding-approve-bob", PrincipalType: identity.PrincipalTypeUser, PrincipalID: "user-2", Permission: "finding:status_change:approve", Effect: identity.PermissionEffectAllow, ScopeType: ptr("project"), ScopeID: ptr(projectID), CreatedAt: now, UpdatedAt: now})
 	bobLogin := loginNamedHTTPUser(t, router, "bob", "correct horse battery staple")
 	response := authedProjectRequest(t, router, bobLogin, http.MethodPost, "/api/findings/"+findingID+"/status-requests/"+requestID+"/approve", `{"comment":"Looks good."}`)

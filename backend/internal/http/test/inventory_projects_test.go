@@ -167,7 +167,7 @@ func newProjectUserRouter(t *testing.T, conn httpDB, now time.Time) (http.Handle
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})

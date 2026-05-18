@@ -2,7 +2,7 @@
 .superpowers/
 docs/superpowers/
 
-# python
+# local tooling
 .venv/
 .ruff_cache/
 .pytest_cache/

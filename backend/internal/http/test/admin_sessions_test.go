@@ -164,7 +164,7 @@ func newSessionAdminRouter(t *testing.T, conn httpDB, now time.Time) (http.Handl
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})

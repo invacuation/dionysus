@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 
 const realBackendEnabled = process.env.E2E_REAL_BACKEND === "1"
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
-const trivyFixture = resolve(repositoryRoot, "python/tests/fixtures/trivy-image.json")
+const trivyFixture = resolve(repositoryRoot, "backend/testdata/trivy-image.json")
 
 test.skip(!realBackendEnabled, "deployed backend e2e runs only against a real app server")
 

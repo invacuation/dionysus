@@ -21,7 +21,7 @@ func TestAccessListReturnsSafeAccessManagementData(t *testing.T) {
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})
@@ -299,7 +299,7 @@ func TestAccessAdminChangesUserPassword(t *testing.T) {
 		Username:     "bob",
 		DisplayName:  "Bob Builder",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})
@@ -337,7 +337,7 @@ func newAccessAdminTestRouter(t *testing.T, conn httpDB) (http.Handler, *httptes
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})
@@ -379,7 +379,7 @@ func TestAccessListRequiresAccessManage(t *testing.T) {
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})

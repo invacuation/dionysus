@@ -28,6 +28,9 @@ func main() {
 			log.Printf("close database: %v", err)
 		}
 	}()
+	if err := db.Migrate(context.Background(), conn); err != nil {
+		log.Fatalf("migrate database: %v", err)
+	}
 	if user, err := identity.BootstrapAdminFromSettings(context.Background(), conn, settings, time.Now().UTC()); err != nil {
 		log.Fatalf("bootstrap admin: %v", err)
 	} else if user != nil {

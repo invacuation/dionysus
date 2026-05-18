@@ -44,8 +44,8 @@ func TestDriverAndDSNNormalizesPythonPostgresURL(t *testing.T) {
 		t.Fatalf("DriverAndDSN() returned error: %v", err)
 	}
 
-	if driver != "pgx" {
-		t.Fatalf("driver = %q, want pgx", driver)
+	if driver != "pgx-qmark" {
+		t.Fatalf("driver = %q, want pgx-qmark", driver)
 	}
 	if dsn != "postgresql://user:pass@db:5432/dionysus" {
 		t.Fatalf("dsn = %q, want postgresql://user:pass@db:5432/dionysus", dsn)
@@ -106,6 +106,48 @@ func TestGeneratedSettingsQueryReadsSingleton(t *testing.T) {
 	}
 	if !settings.SessionIdleTimeoutMinutes.Valid || settings.SessionIdleTimeoutMinutes.Int64 != 45 {
 		t.Fatalf("SessionIdleTimeoutMinutes = %#v, want valid 45", settings.SessionIdleTimeoutMinutes)
+	}
+}
+
+func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
+	conn, err := Open("sqlite:///:memory:")
+	if err != nil {
+		t.Fatalf("Open() returned error: %v", err)
+	}
+	defer conn.Close()
+
+	if err := Migrate(context.Background(), conn); err != nil {
+		t.Fatalf("Migrate() returned error: %v", err)
+	}
+	if err := Migrate(context.Background(), conn); err != nil {
+		t.Fatalf("second Migrate() returned error: %v", err)
+	}
+
+	var version string
+	if err := conn.QueryRowContext(context.Background(), "SELECT version FROM schema_migrations").Scan(&version); err != nil {
+		t.Fatalf("read schema migration: %v", err)
+	}
+	if version != "001" {
+		t.Fatalf("version = %q, want 001", version)
+	}
+	if _, err := dbgen.New(conn).GetAppSecuritySettings(context.Background(), "default"); err != sql.ErrNoRows {
+		t.Fatalf("GetAppSecuritySettings() error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestMigrateRejectsNonEmptyUnmarkedDatabase(t *testing.T) {
+	conn, err := Open("sqlite:///:memory:")
+	if err != nil {
+		t.Fatalf("Open() returned error: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(context.Background(), `CREATE TABLE existing_table (id VARCHAR PRIMARY KEY NOT NULL)`); err != nil {
+		t.Fatalf("create existing table: %v", err)
+	}
+
+	if err := Migrate(context.Background(), conn); err == nil {
+		t.Fatal("Migrate() returned nil error, want rejection for non-empty unmarked database")
 	}
 }
 

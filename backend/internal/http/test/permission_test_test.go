@@ -64,7 +64,7 @@ func TestPermissionTestRequiresPermission(t *testing.T) {
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})
@@ -99,7 +99,7 @@ func newPermissionTestAdminRouter(t *testing.T, conn httpDB, now time.Time) (htt
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})

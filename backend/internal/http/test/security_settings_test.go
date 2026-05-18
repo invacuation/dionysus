@@ -94,7 +94,7 @@ func newSecuritySettingsAdminTestRouter(t *testing.T, conn httpDB) (http.Handler
 		Username:     "alice",
 		DisplayName:  "Alice",
 		IsActive:     true,
-		PasswordHash: pythonArgon2PasswordHash,
+		PasswordHash: argon2PasswordHash,
 		CreatedAt:    now.Add(-time.Hour),
 		UpdatedAt:    now.Add(-time.Hour),
 	})

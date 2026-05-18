@@ -26,46 +26,6 @@ jobs:
             exit 1
           fi
 
-  backend-quality:
-    name: python backend quality
-    runs-on: ubuntu-latest
-    steps:
-      # actions/checkout@v4
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: install uv
-        # astral-sh/setup-uv@v4
-        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
-
-      - name: set up python
-        run: uv python install 3.13
-
-      - name: check lockfile
-        working-directory: python
-        run: uv lock --check
-
-      - name: install backend dependencies
-        working-directory: python
-        run: uv sync --dev
-
-      - name: run ruff
-        working-directory: python
-        run: uv run ruff check .
-
-      - name: check formatting
-        working-directory: python
-        run: uv run ruff format --check .
-
-      - name: run ty
-        working-directory: python
-        run: uv run ty check src tests migrations
-
-      - name: run backend tests
-        working-directory: python
-        run: uv run pytest
-
   go-backend-quality:
     name: go backend quality
     runs-on: ubuntu-latest
@@ -86,37 +46,6 @@ jobs:
         working-directory: backend
         run: go test ./...
 
-  api-parity-contracts:
-    name: api parity contracts
-    runs-on: ubuntu-latest
-    steps:
-      # actions/checkout@v4
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: install uv
-        # astral-sh/setup-uv@v4
-        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
-
-      - name: set up python
-        run: uv python install 3.13
-
-      - name: set up go
-        # actions/setup-go@v5
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-
-      - name: install backend dependencies
-        working-directory: python
-        run: uv sync --dev
-
-      - name: run python/go api parity contracts
-        working-directory: python
-        run: uv run python ../scripts/parity_contract.py
-
   migrations:
     name: database migrations
     runs-on: ubuntu-latest
@@ -126,28 +55,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: install uv
-        # astral-sh/setup-uv@v4
-        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+      - name: set up go
+        # actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
-      - name: set up python
-        run: uv python install 3.13
-
-      - name: install backend dependencies
-        working-directory: python
-        run: uv sync --dev
-
-      - name: upgrade to head
-        working-directory: python
-        run: uv run alembic upgrade head
-
-      - name: downgrade to base
-        working-directory: python
-        run: uv run alembic downgrade base
-
-      - name: upgrade again
-        working-directory: python
-        run: uv run alembic upgrade head
+      - name: verify go schema migration
+        working-directory: backend
+        run: go test ./internal/db/test -run 'TestMigrate'
 
   frontend-quality:
     name: frontend quality
