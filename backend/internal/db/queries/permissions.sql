@@ -1,7 +1,7 @@
 -- name: ListGroupIDsForPrincipal :many
 SELECT group_id
 FROM group_memberships
-WHERE principal_type = ? AND principal_id = ?;
+WHERE principal_type = $1 AND principal_id = $2;
 
 -- name: ListMatchingAssignmentsForPrincipal :many
 SELECT
@@ -31,7 +31,7 @@ WHERE
 -- name: GetGroupName :one
 SELECT name
 FROM groups
-WHERE id = ?;
+WHERE id = $1;
 
 -- name: GetGroup :one
 SELECT
@@ -42,7 +42,7 @@ SELECT
     created_at,
     updated_at
 FROM groups
-WHERE id = ?;
+WHERE id = $1;
 
 -- name: GetGroupByName :one
 SELECT
@@ -53,15 +53,15 @@ SELECT
     created_at,
     updated_at
 FROM groups
-WHERE name = ?;
+WHERE name = $1;
 
 -- name: UpdateGroup :one
 UPDATE groups
 SET
-    display_name = ?,
-    is_protected = ?,
-    updated_at = ?
-WHERE id = ?
+    display_name = $1,
+    is_protected = $2,
+    updated_at = $3
+WHERE id = $4
 RETURNING
     id,
     name,
@@ -78,7 +78,7 @@ INSERT INTO groups (
     is_protected,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     name,
@@ -132,7 +132,7 @@ SELECT
     created_at,
     updated_at
 FROM group_memberships
-WHERE group_id = ? AND principal_type = ? AND principal_id = ?;
+WHERE group_id = $1 AND principal_type = $2 AND principal_id = $3;
 
 -- name: CreateGroupMembership :one
 INSERT INTO group_memberships (
@@ -142,7 +142,7 @@ INSERT INTO group_memberships (
     principal_id,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     group_id,
@@ -188,7 +188,7 @@ INSERT INTO permission_assignments (
     scope_id,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING
     id,
     principal_type,

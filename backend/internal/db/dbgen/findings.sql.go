@@ -24,7 +24,7 @@ INSERT INTO finding_comments (
     status_to,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING
     id,
     finding_id,
@@ -101,7 +101,7 @@ INSERT INTO finding_status_change_requests (
     decided_at,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING
     id,
     finding_id,
@@ -231,7 +231,7 @@ JOIN asset_nodes ON asset_nodes.id = raw_finding_instances.scan_target_id
 LEFT JOIN project_vulnerability_groups ON
     project_vulnerability_groups.project_id = raw_finding_instances.project_id
     AND project_vulnerability_groups.dedupe_key = raw_finding_instances.primary_identifier
-WHERE raw_finding_instances.id = ?
+WHERE raw_finding_instances.id = $1
 `
 
 type GetFindingRowRow struct {
@@ -353,7 +353,7 @@ SELECT
     created_at,
     updated_at
 FROM finding_status_change_requests
-WHERE id = ? AND finding_id = ?
+WHERE id = $1 AND finding_id = $2
 `
 
 type GetFindingStatusChangeRequestParams struct {
@@ -404,7 +404,7 @@ LEFT JOIN users ON users.id = finding_comments.author_principal_id
     AND finding_comments.author_principal_type = 'user'
 LEFT JOIN machine_credentials ON machine_credentials.id = finding_comments.author_principal_id
     AND finding_comments.author_principal_type = 'machine'
-WHERE finding_comments.finding_id = ?
+WHERE finding_comments.finding_id = $1
 ORDER BY finding_comments.created_at, finding_comments.id
 `
 
@@ -665,7 +665,7 @@ LEFT JOIN users AS reviewer_user ON reviewer_user.id = finding_status_change_req
     AND finding_status_change_requests.reviewer_principal_type = 'user'
 LEFT JOIN machine_credentials AS reviewer_machine ON reviewer_machine.id = finding_status_change_requests.reviewer_principal_id
     AND finding_status_change_requests.reviewer_principal_type = 'machine'
-WHERE finding_status_change_requests.finding_id = ?
+WHERE finding_status_change_requests.finding_id = $1
 ORDER BY finding_status_change_requests.created_at, finding_status_change_requests.id
 `
 
@@ -753,11 +753,11 @@ SELECT
     updated_at
 FROM finding_release_status_decisions
 WHERE
-    project_id = ?
-    AND release_scope_asset_id = ?
-    AND scanner_kind = ?
-    AND report_kind = ?
-    AND finding_identity = ?
+    project_id = $1
+    AND release_scope_asset_id = $2
+    AND scanner_kind = $3
+    AND report_kind = $4
+    AND finding_identity = $5
 `
 
 type ListReleaseStatusDecisionsParams struct {
@@ -816,13 +816,13 @@ func (q *Queries) ListReleaseStatusDecisions(ctx context.Context, arg ListReleas
 const updateFindingStatusChangeRequestDecision = `-- name: UpdateFindingStatusChangeRequestDecision :one
 UPDATE finding_status_change_requests
 SET
-    state = ?,
-    reviewer_principal_type = ?,
-    reviewer_principal_id = ?,
-    decision_comment = ?,
-    decided_at = ?,
-    updated_at = ?
-WHERE id = ?
+    state = $1,
+    reviewer_principal_type = $2,
+    reviewer_principal_id = $3,
+    decision_comment = $4,
+    decided_at = $5,
+    updated_at = $6
+WHERE id = $7
 RETURNING
     id,
     finding_id,
@@ -884,8 +884,8 @@ func (q *Queries) UpdateFindingStatusChangeRequestDecision(ctx context.Context, 
 
 const updateProjectVulnerabilityGroupStatus = `-- name: UpdateProjectVulnerabilityGroupStatus :exec
 UPDATE project_vulnerability_groups
-SET status = ?, updated_at = ?
-WHERE project_id = ? AND dedupe_key = ?
+SET status = $1, updated_at = $2
+WHERE project_id = $3 AND dedupe_key = $4
 `
 
 type UpdateProjectVulnerabilityGroupStatusParams struct {
@@ -907,8 +907,8 @@ func (q *Queries) UpdateProjectVulnerabilityGroupStatus(ctx context.Context, arg
 
 const updateRawFindingStatus = `-- name: UpdateRawFindingStatus :one
 UPDATE raw_finding_instances
-SET status = ?, updated_at = ?
-WHERE id = ?
+SET status = $1, updated_at = $2
+WHERE id = $3
 RETURNING
     id,
     project_id,
@@ -993,7 +993,7 @@ INSERT INTO finding_release_status_decisions (
     decided_at,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (
     project_id,
     release_scope_asset_id,

@@ -18,7 +18,7 @@ INSERT INTO users (
     is_active,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     username,
@@ -65,7 +65,7 @@ INSERT INTO user_password_credentials (
     password_hash,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5)
 RETURNING
     id,
     user_id,
@@ -110,7 +110,7 @@ SELECT
     created_at,
     updated_at
 FROM users
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
@@ -135,7 +135,7 @@ SELECT
     created_at,
     updated_at
 FROM user_password_credentials
-WHERE user_id = ?
+WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPasswordCredentialByUserID(ctx context.Context, userID string) (UserPasswordCredential, error) {
@@ -162,7 +162,7 @@ SELECT
     user_password_credentials.password_hash
 FROM users
 JOIN user_password_credentials ON user_password_credentials.user_id = users.id
-WHERE users.username = ?
+WHERE users.username = $1
 `
 
 type GetUserPasswordCredentialByUsernameRow struct {
@@ -235,9 +235,9 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 const updateUserPasswordCredential = `-- name: UpdateUserPasswordCredential :one
 UPDATE user_password_credentials
 SET
-    password_hash = ?,
-    updated_at = ?
-WHERE user_id = ?
+    password_hash = $1,
+    updated_at = $2
+WHERE user_id = $3
 RETURNING
     id,
     user_id,

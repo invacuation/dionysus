@@ -19,7 +19,7 @@ INSERT INTO groups (
     is_protected,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     name,
@@ -67,7 +67,7 @@ INSERT INTO group_memberships (
     principal_id,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING
     id,
     group_id,
@@ -118,7 +118,7 @@ INSERT INTO permission_assignments (
     scope_id,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING
     id,
     principal_type,
@@ -179,7 +179,7 @@ SELECT
     created_at,
     updated_at
 FROM groups
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) GetGroup(ctx context.Context, id string) (Group, error) {
@@ -205,7 +205,7 @@ SELECT
     created_at,
     updated_at
 FROM groups
-WHERE name = ?
+WHERE name = $1
 `
 
 func (q *Queries) GetGroupByName(ctx context.Context, name string) (Group, error) {
@@ -231,7 +231,7 @@ SELECT
     created_at,
     updated_at
 FROM group_memberships
-WHERE group_id = ? AND principal_type = ? AND principal_id = ?
+WHERE group_id = $1 AND principal_type = $2 AND principal_id = $3
 `
 
 type GetGroupMembershipParams struct {
@@ -257,7 +257,7 @@ func (q *Queries) GetGroupMembership(ctx context.Context, arg GetGroupMembership
 const getGroupName = `-- name: GetGroupName :one
 SELECT name
 FROM groups
-WHERE id = ?
+WHERE id = $1
 `
 
 func (q *Queries) GetGroupName(ctx context.Context, id string) (string, error) {
@@ -280,17 +280,17 @@ SELECT
     updated_at
 FROM permission_assignments
 WHERE
-    principal_type = ?1
-    AND principal_id = ?2
-    AND permission = ?3
-    AND effect = ?4
+    principal_type = $1
+    AND principal_id = $2
+    AND permission = $3
+    AND effect = $4
     AND (
-        scope_type = ?5
-        OR (scope_type IS NULL AND ?5 IS NULL)
+        scope_type = $5
+        OR (scope_type IS NULL AND $5 IS NULL)
     )
     AND (
-        scope_id = ?6
-        OR (scope_id IS NULL AND ?6 IS NULL)
+        scope_id = $6
+        OR (scope_id IS NULL AND $6 IS NULL)
     )
 `
 
@@ -330,7 +330,7 @@ func (q *Queries) GetPermissionAssignment(ctx context.Context, arg GetPermission
 const listGroupIDsForPrincipal = `-- name: ListGroupIDsForPrincipal :many
 SELECT group_id
 FROM group_memberships
-WHERE principal_type = ? AND principal_id = ?
+WHERE principal_type = $1 AND principal_id = $2
 `
 
 type ListGroupIDsForPrincipalParams struct {
@@ -458,16 +458,16 @@ SELECT
     updated_at
 FROM permission_assignments
 WHERE
-    principal_type = ?1
-    AND principal_id = ?2
-    AND permission = ?3
+    principal_type = $1
+    AND principal_id = $2
+    AND permission = $3
     AND (
-        scope_type = ?4
-        OR (scope_type IS NULL AND ?4 IS NULL)
+        scope_type = $4
+        OR (scope_type IS NULL AND $4 IS NULL)
     )
     AND (
-        scope_id = ?5
-        OR (scope_id IS NULL AND ?5 IS NULL)
+        scope_id = $5
+        OR (scope_id IS NULL AND $5 IS NULL)
     )
 `
 
@@ -569,10 +569,10 @@ func (q *Queries) ListPermissionAssignments(ctx context.Context) ([]PermissionAs
 const updateGroup = `-- name: UpdateGroup :one
 UPDATE groups
 SET
-    display_name = ?,
-    is_protected = ?,
-    updated_at = ?
-WHERE id = ?
+    display_name = $1,
+    is_protected = $2,
+    updated_at = $3
+WHERE id = $4
 RETURNING
     id,
     name,

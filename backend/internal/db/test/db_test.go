@@ -44,8 +44,8 @@ func TestDriverAndDSNNormalizesPythonPostgresURL(t *testing.T) {
 		t.Fatalf("DriverAndDSN() returned error: %v", err)
 	}
 
-	if driver != "pgx-qmark" {
-		t.Fatalf("driver = %q, want pgx-qmark", driver)
+	if driver != "pgx" {
+		t.Fatalf("driver = %q, want pgx", driver)
 	}
 	if dsn != "postgresql://user:pass@db:5432/dionysus" {
 		t.Fatalf("dsn = %q, want postgresql://user:pass@db:5432/dionysus", dsn)
