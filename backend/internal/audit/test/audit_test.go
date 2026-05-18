@@ -1,8 +1,9 @@
-package audit
+package audit_test
 
 import (
 	"context"
 	"database/sql"
+	. "github.com/invacuation/dionysus/backend/internal/audit"
 	"testing"
 	"time"
 

@@ -1,8 +1,9 @@
-package db
+package db_test
 
 import (
 	"context"
 	"database/sql"
+	. "github.com/invacuation/dionysus/backend/internal/db"
 	"testing"
 	"time"
 

@@ -1,7 +1,8 @@
-package security
+package security_test
 
 import (
 	"encoding/hex"
+	. "github.com/invacuation/dionysus/backend/internal/security"
 	"testing"
 )
 

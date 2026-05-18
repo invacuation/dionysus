@@ -1,8 +1,9 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
 	"encoding/json"
+	. "github.com/invacuation/dionysus/backend/internal/http"
 	"net/http"
 	"net/http/httptest"
 	"strings"

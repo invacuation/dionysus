@@ -1,6 +1,9 @@
-package config
+package config_test
 
-import "testing"
+import (
+	. "github.com/invacuation/dionysus/backend/internal/config"
+	"testing"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	clearEnv(t)

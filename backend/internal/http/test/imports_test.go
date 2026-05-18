@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"bytes"
@@ -258,7 +258,7 @@ func newImportProjectFixture(t *testing.T, conn httpDB, now time.Time) (string, 
 
 func trivyFixture(t *testing.T) []byte {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "python", "tests", "fixtures", "trivy-image.json")
+	path := filepath.Join("..", "..", "..", "..", "python", "tests", "fixtures", "trivy-image.json")
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)

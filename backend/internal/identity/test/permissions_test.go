@@ -1,8 +1,9 @@
-package identity
+package identity_test
 
 import (
 	"context"
 	"database/sql"
+	. "github.com/invacuation/dionysus/backend/internal/identity"
 	"strings"
 	"testing"
 	"time"

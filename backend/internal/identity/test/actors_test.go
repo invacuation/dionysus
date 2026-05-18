@@ -1,6 +1,9 @@
-package identity
+package identity_test
 
-import "testing"
+import (
+	. "github.com/invacuation/dionysus/backend/internal/identity"
+	"testing"
+)
 
 func TestParseBearerAuthorization(t *testing.T) {
 	tests := []struct {

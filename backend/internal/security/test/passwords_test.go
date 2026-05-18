@@ -1,6 +1,9 @@
-package security
+package security_test
 
-import "testing"
+import (
+	. "github.com/invacuation/dionysus/backend/internal/security"
+	"testing"
+)
 
 const pythonArgon2Hash = "$argon2id$v=19$m=65536,t=3,p=4$QuVbsCm0NDtiCTn5MdE0uw$NLEfzmIHyfK15B1McgJvPtRY4OTcNkq6/qH7KRGzfHU"
 
